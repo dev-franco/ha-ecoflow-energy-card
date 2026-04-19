@@ -1,18 +1,17 @@
 # EcoFlow Energy Card
 
-A custom Home Assistant Lovelace card that replicates the EcoFlow energy flow visualization UI. Shows solar generation, battery status, grid input, and home consumption with animated energy flow lines.
-
-![EcoFlow Energy Card Preview](docs/preview.png)
+A custom Home Assistant Lovelace card inspired by the EcoFlow energy flow visualization. Shows solar generation, battery status, grid input, and home consumption with animated photon energy flow effects.
 
 ## Features
 
-- House illustration with solar panels
-- Animated energy flow lines between components
+- 3D house illustration with solar panels as backdrop
+- Animated photon/comet energy flow effects (bright tip with fading trail)
+- Dual-line system: pointer lines for labels + energy flow lines tracing the inverter hub
 - Auto-detects flow direction (charging/discharging, import/export)
 - Auto-scales W to kW
-- Configurable labels (defaults to German like EcoFlow)
-- Configurable colors
+- Configurable labels and colors
 - Visual card editor in HA UI
+- Self-contained: house image is embedded (no extra files to copy)
 - HACS compatible
 
 ## Installation
@@ -21,13 +20,13 @@ A custom Home Assistant Lovelace card that replicates the EcoFlow energy flow vi
 
 1. Open HACS in your Home Assistant instance
 2. Click the three dots in the top-right corner and select **Custom repositories**
-3. Add this repository URL and select **Lovelace** as the category
+3. Add this repository URL and select **Dashboard** as the category
 4. Click **Install**
 5. Refresh your browser (hard refresh: Ctrl+Shift+R)
 
 ### Manual Installation
 
-1. Download `ecoflow-energy-card.js` from the [latest release](../../releases/latest) (or from the `dist/` folder)
+1. Download `ecoflow-energy-card.js` from the `dist/` folder
 2. Copy it to your Home Assistant `config/www/` directory
 3. Add the resource in your HA dashboard:
    - Go to **Settings** > **Dashboards** > three-dot menu > **Resources**
@@ -47,13 +46,14 @@ solar_power: sensor.ecoflow_solar_power
 
 ```yaml
 type: custom:ecoflow-energy-card
-title: "Energy Flow"
 solar_power: sensor.ecoflow_solar_power
 grid_power: sensor.ecoflow_grid_power
 battery_power: sensor.ecoflow_battery_power
 battery_soc: sensor.ecoflow_battery_soc
 home_consumption: sensor.ecoflow_home_consumption
-# Labels (customize to your language)
+# Custom background (optional — embedded image used by default)
+# background_image: /local/my-custom-house.png
+# Labels
 grid_label: "Grid"
 solar_label: "Solar"
 home_label: "Home"
@@ -65,36 +65,41 @@ power_unit: "kW"
 # Colors
 solar_color: "#f5c542"
 grid_color: "#a0a0a0"
-battery_color: "#4fc3f7"
-home_color: "#66bb6a"
+battery_color: "#66bb6a"
+home_color: "#4fc3f7"
 # Options
 animate: true
-show_house: true
 auto_scale: true
 ```
 
-### Entity Configuration Notes
+### Entities
 
 | Option | Required | Description |
 |---|---|---|
-| `solar_power` | Yes | Solar generation power sensor |
-| `grid_power` | No | Grid power sensor (positive = importing, negative = exporting) |
-| `battery_power` | No | Battery power sensor (positive = charging, negative = discharging) |
+| `solar_power` | **Yes** | Solar generation power sensor |
+| `grid_power` | No | Grid power (positive = importing, negative = exporting) |
+| `battery_power` | No | Battery power (positive = charging, negative = discharging) |
 | `battery_soc` | No | Battery state of charge (0-100%) |
-| `home_consumption` | No | Total home power consumption sensor |
+| `home_consumption` | No | Total home power consumption |
+
+### Sign Conventions
+
+- **Grid**: positive value = importing from grid, negative = exporting to grid
+- **Battery**: positive value = charging, negative = discharging
 
 ### Auto-scaling
 
-By default, the card detects if your sensors report in **W** and automatically converts to **kW**. Set `auto_scale: false` to disable this.
+The card detects if your sensors report in **W** and automatically converts to **kW** for display. Set `auto_scale: false` to disable this.
 
-## Development
+### Custom Background Image
 
-```bash
-git clone https://github.com/your-username/ha-ecoflow-energy-card.git
-cd ha-ecoflow-energy-card
-# Edit src/ecoflow-energy-card.js
-npm run build
+The card includes an embedded house illustration by default. To use your own image, place it in your HA `www/` folder and set:
+
+```yaml
+background_image: /local/my-house.png
 ```
+
+Note: the energy flow line coordinates are tuned for the default image. A custom image may require adjusting the flow paths in the card source.
 
 ## License
 
