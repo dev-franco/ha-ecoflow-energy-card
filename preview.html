@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EcoFlow Energy Card - Preview</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #111;
+      color: #eee;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      display: flex;
+      justify-content: center;
+      padding: 30px 20px;
+      min-height: 100vh;
+    }
+    .preview-wrapper {
+      display: flex;
+      gap: 40px;
+      max-width: 1100px;
+      width: 100%;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    ha-card {
+      display: block;
+      background: #2d2d2d;
+      color: #fff;
+      padding: 0;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .card-container { width: 520px; flex-shrink: 0; }
+    .card-container h2 {
+      margin-bottom: 12px; font-size: 13px; color: #666;
+      text-transform: uppercase; letter-spacing: 1px;
+    }
+    .controls { width: 300px; flex-shrink: 0; }
+    .controls h2 {
+      margin-bottom: 16px; font-size: 13px; color: #666;
+      text-transform: uppercase; letter-spacing: 1px;
+    }
+    .control-group {
+      margin-bottom: 16px; background: #1e1e1e; padding: 12px 14px; border-radius: 8px;
+    }
+    .control-group label {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 6px; font-size: 13px; font-weight: 500;
+    }
+    .control-group label .vd {
+      font-weight: 700; font-variant-numeric: tabular-nums;
+      min-width: 80px; text-align: right;
+    }
+    .control-group input[type="range"] {
+      width: 100%; height: 5px; -webkit-appearance: none; appearance: none;
+      background: #333; border-radius: 3px; outline: none;
+    }
+    .control-group input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; cursor: pointer;
+    }
+    .solar input::-webkit-slider-thumb { background: #f5c542; }
+    .grid input::-webkit-slider-thumb { background: #a0a0a0; }
+    .battery input::-webkit-slider-thumb { background: #4fc3f7; }
+    .home input::-webkit-slider-thumb { background: #66bb6a; }
+    .soc input::-webkit-slider-thumb { background: #4fc3f7; }
+    .solar .vd { color: #f5c542; }
+    .grid .vd { color: #a0a0a0; }
+    .battery .vd { color: #4fc3f7; }
+    .home .vd { color: #66bb6a; }
+    .soc .vd { color: #4fc3f7; }
+    .presets {
+      display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px;
+    }
+    .presets button {
+      padding: 7px 12px; border: 1px solid #444; border-radius: 6px;
+      background: #222; color: #ccc; cursor: pointer; font-size: 11px;
+      transition: all 0.15s;
+    }
+    .presets button:hover { background: #333; border-color: #666; color: #fff; }
+    .presets button.active { background: #2a3a5a; border-color: #4fc3f7; color: #4fc3f7; }
+    .hint { font-size: 10px; color: #555; margin-top: 3px; }
+  </style>
+</head>
+<body>
+  <div class="preview-wrapper">
+    <div class="card-container">
+      <h2>Card Preview</h2>
+      <ecoflow-energy-card id="card"></ecoflow-energy-card>
+    </div>
+    <div class="controls">
+      <h2>Simulate Values</h2>
+      <div class="presets">
+        <button onclick="applyPreset('ecoflow')" id="preset-ecoflow">EcoFlow Screenshot</button>
+        <button onclick="applyPreset('sunny')">Sunny Day</button>
+        <button onclick="applyPreset('night')">Night</button>
+        <button onclick="applyPreset('export')">Grid Export</button>
+        <button onclick="applyPreset('idle')">All Idle</button>
+      </div>
+      <div class="control-group solar">
+        <label><span>Solar Power</span><span class="vd" id="solar-val">4.44 kW</span></label>
+        <input type="range" id="solar" min="0" max="12" step="0.01" value="4.44">
+      </div>
+      <div class="control-group grid">
+        <label><span>Grid Power</span><span class="vd" id="grid-val">0.00 kW</span></label>
+        <input type="range" id="grid" min="-10" max="10" step="0.01" value="0">
+        <div class="hint">Negative = exporting to grid</div>
+      </div>
+      <div class="control-group home">
+        <label><span>Home Consumption</span><span class="vd" id="home-val">0.42 kW</span></label>
+        <input type="range" id="home" min="0" max="15" step="0.01" value="0.42">
+      </div>
+      <div class="control-group battery">
+        <label><span>Battery Power</span><span class="vd" id="battery-val">4.02 kW</span></label>
+        <input type="range" id="battery" min="-8" max="8" step="0.01" value="4.02">
+        <div class="hint">Positive = charging, Negative = discharging</div>
+      </div>
+      <div class="control-group soc">
+        <label><span>Battery SOC</span><span class="vd" id="soc-val">9%</span></label>
+        <input type="range" id="soc" min="0" max="100" step="1" value="9">
+      </div>
+    </div>
+  </div>
+  <script src="src/ecoflow-energy-card.js"></script>
+  <script>
+    function buildHass(solar, grid, home, battery, soc) {
+      return {
+        states: {
+          "sensor.solar_power": { state: String(solar), attributes: { unit_of_measurement: "kW" } },
+          "sensor.grid_power": { state: String(grid), attributes: { unit_of_measurement: "kW" } },
+          "sensor.home_consumption": { state: String(home), attributes: { unit_of_measurement: "kW" } },
+          "sensor.battery_power": { state: String(battery), attributes: { unit_of_measurement: "kW" } },
+          "sensor.battery_soc": { state: String(soc), attributes: { unit_of_measurement: "%" } }
+        }
+      };
+    }
+
+    const card = document.getElementById("card");
+    card.setConfig({
+      solar_power: "sensor.solar_power",
+      grid_power: "sensor.grid_power",
+      home_consumption: "sensor.home_consumption",
+      battery_power: "sensor.battery_power",
+      battery_soc: "sensor.battery_soc",
+      auto_scale: false,
+      background_image: "src/house.png"
+    });
+
+    function updateCard() {
+      const s = parseFloat(document.getElementById("solar").value);
+      const g = parseFloat(document.getElementById("grid").value);
+      const h = parseFloat(document.getElementById("home").value);
+      const b = parseFloat(document.getElementById("battery").value);
+      const soc = parseFloat(document.getElementById("soc").value);
+      document.getElementById("solar-val").textContent = s.toFixed(2) + " kW";
+      document.getElementById("grid-val").textContent = g.toFixed(2) + " kW";
+      document.getElementById("home-val").textContent = h.toFixed(2) + " kW";
+      document.getElementById("battery-val").textContent = b.toFixed(2) + " kW";
+      document.getElementById("soc-val").textContent = Math.round(soc) + "%";
+      card.hass = buildHass(s, g, h, b, soc);
+    }
+
+    const presets = {
+      ecoflow: { solar: 4.44, grid: 0, home: 0.42, battery: 4.02, soc: 9 },
+      sunny:   { solar: 8.5, grid: -2.1, home: 3.2, battery: 3.2, soc: 72 },
+      night:   { solar: 0, grid: 2.8, home: 2.8, battery: 0, soc: 45 },
+      export:  { solar: 10.2, grid: -5.5, home: 1.5, battery: 3.2, soc: 95 },
+      idle:    { solar: 0, grid: 0, home: 0, battery: 0, soc: 50 },
+    };
+
+    function applyPreset(name) {
+      const p = presets[name];
+      document.getElementById("solar").value = p.solar;
+      document.getElementById("grid").value = p.grid;
+      document.getElementById("home").value = p.home;
+      document.getElementById("battery").value = p.battery;
+      document.getElementById("soc").value = p.soc;
+      updateCard();
+      document.querySelectorAll(".presets button").forEach(b => b.classList.remove("active"));
+      const btn = document.getElementById("preset-" + name);
+      if (btn) btn.classList.add("active");
+    }
+
+    ["solar", "grid", "home", "battery", "soc"].forEach(id => {
+      document.getElementById(id).addEventListener("input", () => {
+        document.querySelectorAll(".presets button").forEach(b => b.classList.remove("active"));
+        updateCard();
+      });
+    });
+
+    applyPreset("ecoflow");
+  </script>
+</body>
+</html>

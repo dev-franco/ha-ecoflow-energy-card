@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Path Picker — EcoFlow Energy Card</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #111; color: #eee;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      padding: 24px;
+    }
+    h2 { font-size: 13px; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+    .layout { display: flex; gap: 32px; flex-wrap: wrap; align-items: flex-start; }
+
+    .image-area {
+      position: relative; width: 600px; cursor: crosshair;
+      border-radius: 8px; overflow: hidden; flex-shrink: 0;
+    }
+    .image-area img { width: 100%; display: block; }
+    .image-area svg {
+      position: absolute; inset: 0; width: 100%; height: 100%;
+      pointer-events: none;
+    }
+    .draggable { cursor: grab; pointer-events: all; }
+    .draggable:active { cursor: grabbing; }
+
+    .panel { width: 360px; }
+
+    .path-section {
+      background: #1a1a1a; border: 1px solid #333; border-radius: 8px;
+      padding: 12px 14px; margin-bottom: 10px;
+    }
+    .path-section .path-title {
+      font-size: 13px; font-weight: 700; margin-bottom: 6px;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .path-section .path-title .dot {
+      width: 10px; height: 10px; border-radius: 50%;
+    }
+    .path-section .path-points {
+      font-family: 'SF Mono', Monaco, monospace; font-size: 12px;
+      color: #4fc3f7; line-height: 1.6;
+    }
+    .path-section .add-btn {
+      margin-top: 6px; padding: 4px 10px; font-size: 11px;
+      background: #222; border: 1px solid #444; border-radius: 4px;
+      color: #aaa; cursor: pointer;
+    }
+    .path-section .add-btn:hover { background: #333; color: #fff; }
+
+    .copy-btn {
+      padding: 8px 16px; background: #2a3a5a; border: 1px solid #4fc3f7;
+      border-radius: 6px; color: #4fc3f7; cursor: pointer; font-size: 12px;
+      margin-bottom: 16px; width: 100%;
+    }
+    .copy-btn:hover { background: #3a4a6a; }
+
+    .instructions {
+      background: #1a1a1a; border: 1px solid #333; border-radius: 8px;
+      padding: 14px; font-size: 12px; line-height: 1.6; color: #aaa;
+    }
+    .instructions strong { color: #eee; }
+
+    .mouse-coords {
+      position: fixed; bottom: 16px; left: 16px; background: #000;
+      padding: 6px 12px; border-radius: 4px;
+      font-family: 'SF Mono', Monaco, monospace; font-size: 12px; color: #888;
+    }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div>
+      <h2>Drag points to build each flow path</h2>
+      <div class="image-area" id="imageArea">
+        <img src="src/house.png" alt="House" />
+        <svg id="overlaySvg" viewBox="0 0 484 346">
+          <!-- Path lines drawn dynamically -->
+          <!-- Draggable points drawn dynamically -->
+        </svg>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>Flow paths</h2>
+      <div id="pathSections"></div>
+      <button class="copy-btn" onclick="copyAll()">Copy all paths to clipboard</button>
+
+      <div class="instructions">
+        <strong>How to use:</strong><br><br>
+        Each flow is a path made of connected waypoints. Drag points to trace the wiring on the house.<br><br>
+        <strong>+ Add point</strong> adds a new waypoint at the end of the path.<br><br>
+        The first and last points of each path are the important endpoints. Middle points create bends.<br><br>
+        When done, hit <strong>Copy</strong> and paste the result to Claude.
+      </div>
+    </div>
+  </div>
+
+  <div class="mouse-coords" id="mouseCoords">x: — y: —</div>
+
+  <script>
+    const svg = document.getElementById('overlaySvg');
+    const imageArea = document.getElementById('imageArea');
+
+    // Define flow paths with initial points (from your picker results)
+    const flows = {
+      solar_to_inv: {
+        label: 'Solar → Inverter',
+        color: '#f5c542',
+        points: [
+          { x: 225, y: 162 },
+          { x: 238, y: 192 },
+          { x: 238, y: 225 },
+        ]
+      },
+      grid_to_inv: {
+        label: 'Grid → Inverter',
+        color: '#a0a0a0',
+        points: [
+          { x: 166, y: 334 },
+          { x: 200, y: 280 },
+          { x: 238, y: 225 },
+        ]
+      },
+      inv_to_battery: {
+        label: 'Inverter → Battery',
+        color: '#4fc3f7',
+        points: [
+          { x: 238, y: 225 },
+          { x: 240, y: 261 },
+        ]
+      },
+      inv_to_home: {
+        label: 'Inverter → Home',
+        color: '#66bb6a',
+        points: [
+          { x: 238, y: 225 },
+          { x: 354, y: 206 },
+        ]
+      },
+    };
+
+    // Also keep pointer line endpoints (thin lines from labels)
+    const pointers = {
+      ptr_grid:  { label: 'Grid pointer',  color: '#a0a0a0', points: [{ x: 75, y: 0 }, { x: 75, y: 160 }] },
+      ptr_solar: { label: 'Solar pointer', color: '#f5c542', points: [{ x: 240, y: 0 }, { x: 240, y: 80 }] },
+      ptr_home:  { label: 'Home pointer',  color: '#66bb6a', points: [{ x: 395, y: 0 }, { x: 395, y: 95 }] },
+    };
+
+    let dragging = null; // { flowId, pointIndex }
+    let dragOffset = { x: 0, y: 0 };
+
+    function svgPoint(clientX, clientY) {
+      const pt = svg.createSVGPoint();
+      pt.x = clientX; pt.y = clientY;
+      return pt.matrixTransform(svg.getScreenCTM().inverse());
+    }
+
+    function rebuildSvg() {
+      svg.innerHTML = '';
+      const allFlows = { ...flows, ...pointers };
+
+      for (const [id, flow] of Object.entries(allFlows)) {
+        const isPointer = id.startsWith('ptr_');
+
+        // Draw path line
+        if (flow.points.length >= 2) {
+          const pathD = flow.points.map((p, i) =>
+            (i === 0 ? 'M' : 'L') + ` ${p.x},${p.y}`
+          ).join(' ');
+          const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+          path.setAttribute('d', pathD);
+          path.setAttribute('fill', 'none');
+          path.setAttribute('stroke', flow.color);
+          path.setAttribute('stroke-width', isPointer ? '1' : '3');
+          path.setAttribute('stroke-linecap', 'round');
+          path.setAttribute('stroke-linejoin', 'round');
+          path.setAttribute('opacity', isPointer ? '0.25' : '0.6');
+          if (!isPointer) {
+            path.setAttribute('stroke-dasharray', '6 10');
+          }
+          svg.appendChild(path);
+        }
+
+        // Draw draggable points
+        flow.points.forEach((p, i) => {
+          const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          g.classList.add('draggable');
+          g.dataset.flowId = id;
+          g.dataset.pointIndex = i;
+          g.setAttribute('transform', `translate(${p.x}, ${p.y})`);
+
+          const r = isPointer ? 4 : 6;
+          const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          circle.setAttribute('r', r);
+          circle.setAttribute('fill', flow.color);
+          circle.setAttribute('stroke', '#fff');
+          circle.setAttribute('stroke-width', '1.5');
+          g.appendChild(circle);
+
+          // Label: show name on first point, index on others
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('y', '-10');
+          text.setAttribute('text-anchor', 'middle');
+          text.setAttribute('font-size', '9');
+          text.setAttribute('fill', flow.color);
+          text.setAttribute('font-weight', 'bold');
+          if (i === 0 && !isPointer) {
+            text.textContent = flow.label.split('→')[0].trim().toUpperCase();
+          } else if (!isPointer) {
+            text.textContent = i;
+          }
+          g.appendChild(text);
+
+          svg.appendChild(g);
+        });
+      }
+    }
+
+    function updatePanel() {
+      const el = document.getElementById('pathSections');
+      let html = '';
+      const allFlows = { ...flows, ...pointers };
+
+      for (const [id, flow] of Object.entries(allFlows)) {
+        const isPointer = id.startsWith('ptr_');
+        const pointsStr = flow.points.map((p, i) =>
+          `  (${Math.round(p.x)}, ${Math.round(p.y)})`
+        ).join('<br>');
+
+        html += `
+          <div class="path-section">
+            <div class="path-title">
+              <div class="dot" style="background: ${flow.color}"></div>
+              ${flow.label} ${isPointer ? '<span style="color:#666">(pointer)</span>' : ''}
+            </div>
+            <div class="path-points">${pointsStr}</div>
+            ${!isPointer ? `<button class="add-btn" onclick="addPoint('${id}')">+ Add point</button>` : ''}
+          </div>`;
+      }
+      el.innerHTML = html;
+    }
+
+    function addPoint(flowId) {
+      const pts = flows[flowId].points;
+      const last = pts[pts.length - 1];
+      // Add new point offset slightly from last
+      pts.push({ x: last.x + 20, y: last.y + 20 });
+      rebuildSvg();
+      updatePanel();
+    }
+
+    function copyAll() {
+      const allFlows = { ...flows, ...pointers };
+      const lines = [];
+      for (const [id, flow] of Object.entries(allFlows)) {
+        const ptsStr = flow.points.map(p => `(${Math.round(p.x)}, ${Math.round(p.y)})`).join(' → ');
+        lines.push(`${flow.label}: ${ptsStr}`);
+      }
+      navigator.clipboard.writeText(lines.join('\n')).then(() => {
+        const btn = document.querySelector('.copy-btn');
+        btn.textContent = 'Copied!';
+        setTimeout(() => btn.textContent = 'Copy all paths to clipboard', 1500);
+      });
+    }
+
+    // Mouse tracking
+    imageArea.addEventListener('mousemove', (e) => {
+      const pt = svgPoint(e.clientX, e.clientY);
+      document.getElementById('mouseCoords').textContent = `x: ${Math.round(pt.x)}  y: ${Math.round(pt.y)}`;
+    });
+
+    // Right-click to remove a point (min 2 per path)
+    svg.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const g = e.target.closest('.draggable');
+      if (!g) return;
+      const flowId = g.dataset.flowId;
+      const idx = parseInt(g.dataset.pointIndex);
+      const allFlows = { ...flows, ...pointers };
+      const flow = allFlows[flowId];
+      if (flow.points.length <= 2) return; // keep at least 2
+      flow.points.splice(idx, 1);
+      rebuildSvg();
+      updatePanel();
+    });
+
+    // Drag
+    svg.addEventListener('mousedown', (e) => {
+      const g = e.target.closest('.draggable');
+      if (!g) return;
+      e.preventDefault();
+      dragging = { flowId: g.dataset.flowId, pointIndex: parseInt(g.dataset.pointIndex) };
+      const pt = svgPoint(e.clientX, e.clientY);
+      const allFlows = { ...flows, ...pointers };
+      const p = allFlows[dragging.flowId].points[dragging.pointIndex];
+      dragOffset.x = pt.x - p.x;
+      dragOffset.y = pt.y - p.y;
+    });
+
+    window.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const pt = svgPoint(e.clientX, e.clientY);
+      const allFlows = { ...flows, ...pointers };
+      const p = allFlows[dragging.flowId].points[dragging.pointIndex];
+      p.x = Math.round(pt.x - dragOffset.x);
+      p.y = Math.round(pt.y - dragOffset.y);
+      rebuildSvg();
+      updatePanel();
+    });
+
+    window.addEventListener('mouseup', () => { dragging = null; });
+
+    // Touch
+    svg.addEventListener('touchstart', (e) => {
+      const g = e.target.closest('.draggable');
+      if (!g) return;
+      e.preventDefault();
+      dragging = { flowId: g.dataset.flowId, pointIndex: parseInt(g.dataset.pointIndex) };
+      const touch = e.touches[0];
+      const pt = svgPoint(touch.clientX, touch.clientY);
+      const allFlows = { ...flows, ...pointers };
+      const p = allFlows[dragging.flowId].points[dragging.pointIndex];
+      dragOffset.x = pt.x - p.x;
+      dragOffset.y = pt.y - p.y;
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+      if (!dragging) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const pt = svgPoint(touch.clientX, touch.clientY);
+      const allFlows = { ...flows, ...pointers };
+      const p = allFlows[dragging.flowId].points[dragging.pointIndex];
+      p.x = Math.round(pt.x - dragOffset.x);
+      p.y = Math.round(pt.y - dragOffset.y);
+      rebuildSvg();
+      updatePanel();
+    }, { passive: false });
+
+    window.addEventListener('touchend', () => { dragging = null; });
+
+    // Init
+    rebuildSvg();
+    updatePanel();
+  </script>
+</body>
+</html>
