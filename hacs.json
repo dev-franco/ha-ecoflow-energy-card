@@ -1,0 +1,8 @@
+{
+  "name": "EcoFlow Energy Card",
+  "render_readme": true,
+  "content_in_root": false,
+  "filename": "ecoflow-energy-card.js",
+  "country": ["*"],
+  "homeassistant": "2023.0.0"
+}

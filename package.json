@@ -1,0 +1,22 @@
+{
+  "name": "ecoflow-energy-card",
+  "version": "1.0.0",
+  "description": "Home Assistant custom Lovelace card replicating the EcoFlow energy flow visualization",
+  "main": "dist/ecoflow-energy-card.js",
+  "scripts": {
+    "build": "cp src/ecoflow-energy-card.js dist/ecoflow-energy-card.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "keywords": [
+    "home-assistant",
+    "lovelace",
+    "ecoflow",
+    "energy",
+    "solar",
+    "battery"
+  ],
+  "license": "MIT"
+}
