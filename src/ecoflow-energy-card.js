@@ -139,6 +139,15 @@ class EcoflowEnergyCard extends HTMLElement {
     const homePower = this._getRawPower(this._config.home_consumption);
     const batterySoc = this._getEntityValue(this._config.battery_soc);
 
+    // Debug: log entity lookups (remove after troubleshooting)
+    console.table({
+      solar: { entity: this._config.solar_power, found: !!this._hass.states[this._config.solar_power], state: this._hass.states[this._config.solar_power]?.state, unit: this._hass.states[this._config.solar_power]?.attributes?.unit_of_measurement, raw: solarPower },
+      grid: { entity: this._config.grid_power, found: !!this._hass.states[this._config.grid_power], state: this._hass.states[this._config.grid_power]?.state, unit: this._hass.states[this._config.grid_power]?.attributes?.unit_of_measurement, raw: gridPower },
+      battery: { entity: this._config.battery_power, found: !!this._hass.states[this._config.battery_power], state: this._hass.states[this._config.battery_power]?.state, unit: this._hass.states[this._config.battery_power]?.attributes?.unit_of_measurement, raw: batteryPower },
+      home: { entity: this._config.home_consumption, found: !!this._hass.states[this._config.home_consumption], state: this._hass.states[this._config.home_consumption]?.state, unit: this._hass.states[this._config.home_consumption]?.attributes?.unit_of_measurement, raw: homePower },
+      soc: { entity: this._config.battery_soc, found: !!this._hass.states[this._config.battery_soc], state: this._hass.states[this._config.battery_soc]?.state, unit: this._hass.states[this._config.battery_soc]?.attributes?.unit_of_measurement, raw: batterySoc },
+    });
+
     const gridFlowing = Math.abs(gridPower) > 0.01;
     const solarFlowing = Math.abs(solarPower) > 0.01;
     const batteryFlowing = Math.abs(batteryPower) > 0.01;
