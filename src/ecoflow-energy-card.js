@@ -57,8 +57,26 @@ class EcoflowEnergyCard extends HTMLElement {
   }
 
   set hass(hass) {
+    // Only re-render when relevant entity values actually change
+    // to avoid restarting SVG animations on every hass update
+    const entities = [
+      this._config.solar_power,
+      this._config.grid_power,
+      this._config.battery_power,
+      this._config.battery_soc,
+      this._config.home_consumption,
+    ].filter(Boolean);
+
+    const newSignature = entities.map(e =>
+      hass.states[e] ? hass.states[e].state : ''
+    ).join('|');
+
     this._hass = hass;
-    this._render();
+
+    if (this._lastSignature !== newSignature) {
+      this._lastSignature = newSignature;
+      this._render();
+    }
   }
 
   _getEntityValue(entityId) {
