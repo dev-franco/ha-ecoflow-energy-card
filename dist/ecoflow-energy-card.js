@@ -57,26 +57,18 @@ class EcoflowEnergyCard extends HTMLElement {
   }
 
   set hass(hass) {
-    // Only re-render when relevant entity values actually change
-    // to avoid restarting SVG animations on every hass update
-    const entities = [
-      this._config.solar_power,
-      this._config.grid_power,
-      this._config.battery_power,
-      this._config.battery_soc,
-      this._config.home_consumption,
-    ].filter(Boolean);
-
-    const newSignature = entities.map(e =>
-      hass.states[e] ? hass.states[e].state : ''
-    ).join('|');
-
     this._hass = hass;
 
-    if (this._lastSignature !== newSignature) {
-      this._lastSignature = newSignature;
+    if (!this._rendered) {
+      // First render: build the full DOM
       this._render();
+      return;
     }
+
+    // Subsequent updates: only update text labels (no DOM rebuild)
+    // and rebuild animations only if flow state changes
+    this._updateLabels();
+    this._updateAnimations();
   }
 
   _getEntityValue(entityId) {
@@ -151,19 +143,12 @@ class EcoflowEnergyCard extends HTMLElement {
     }).join('');
   }
 
-  _render() {
-    if (!this._config || !this._hass) return;
-
+  _getFlowState() {
     const solarWatts = this._getRawWatts(this._config.solar_power);
     const gridWatts = this._getRawWatts(this._config.grid_power);
     const batteryWatts = this._getRawWatts(this._config.battery_power);
     const homeWatts = this._getRawWatts(this._config.home_consumption);
     const batterySoc = this._getEntityValue(this._config.battery_soc);
-
-    const solarFmt = this._formatPower(solarWatts);
-    const gridFmt = this._formatPower(gridWatts);
-    const batteryFmt = this._formatPower(batteryWatts);
-    const homeFmt = this._formatPower(homeWatts);
 
     const gridFlowing = Math.abs(gridWatts) > 1;
     const solarFlowing = Math.abs(solarWatts) > 1;
@@ -172,15 +157,105 @@ class EcoflowEnergyCard extends HTMLElement {
     const gridImporting = gridWatts > 0;
     const batteryCharging = batteryWatts > 0;
 
+    return { solarWatts, gridWatts, batteryWatts, homeWatts, batterySoc,
+             gridFlowing, solarFlowing, batteryFlowing, homeFlowing,
+             gridImporting, batteryCharging };
+  }
+
+  _updateLabels() {
+    if (!this._config || !this._hass) return;
+    const s = this._getFlowState();
+    const root = this.shadowRoot;
+
+    const solarFmt = this._formatPower(s.solarWatts);
+    const gridFmt = this._formatPower(s.gridWatts);
+    const batteryFmt = this._formatPower(s.batteryWatts);
+    const homeFmt = this._formatPower(s.homeWatts);
+
+    // Update top labels (HTML)
+    const gv = root.getElementById('grid-val');
+    const gu = root.getElementById('grid-unit');
+    const sv = root.getElementById('solar-val');
+    const su = root.getElementById('solar-unit');
+    const hv = root.getElementById('home-val');
+    const hu = root.getElementById('home-unit');
+    if (gv) { gv.textContent = gridFmt.value; gu.textContent = gridFmt.unit; }
+    if (sv) { sv.textContent = solarFmt.value; su.textContent = solarFmt.unit; }
+    if (hv) { hv.textContent = homeFmt.value; hu.textContent = homeFmt.unit; }
+
+    // Update battery label (SVG)
+    const bv = root.getElementById('batt-val');
+    const bu = root.getElementById('batt-unit');
+    const bs = root.getElementById('batt-soc');
+    const bl = root.getElementById('batt-label');
+    if (bv) {
+      bv.textContent = batteryFmt.value;
+      bu.textContent = ' ' + batteryFmt.unit;
+      const socColor = s.batteryCharging ? this._config.battery_color : s.batteryFlowing ? '#f0a030' : this._config.battery_color;
+      bs.setAttribute('fill', socColor);
+      bs.textContent = ` ${s.batteryCharging ? '↑' : s.batteryFlowing ? '↓' : ''} ${Math.round(s.batterySoc)}%`;
+      const lblColor = !s.batteryCharging && s.batteryFlowing ? '#f0a030' : '#888';
+      bl.setAttribute('fill', lblColor);
+      let batteryLabel = this._config.battery_idle_label;
+      if (s.batteryFlowing) {
+        batteryLabel = s.batteryCharging ? this._config.battery_charging_label : this._config.battery_discharging_label;
+      }
+      bl.textContent = batteryLabel;
+    }
+  }
+
+  _updateAnimations() {
+    if (!this._config || !this._hass) return;
+    const s = this._getFlowState();
+
+    // Build a signature of flow states (flowing + direction)
+    const flowSig = [
+      s.solarFlowing,
+      s.gridFlowing, s.gridImporting,
+      s.batteryFlowing, s.batteryCharging,
+      s.homeFlowing,
+    ].join('|');
+
+    if (this._lastFlowSig === flowSig) return;
+    this._lastFlowSig = flowSig;
+
+    // Only rebuild the animations container
+    const container = this.shadowRoot.getElementById('anim-container');
+    if (!container) return;
+
+    const animate = this._config.animate;
+    container.innerHTML = `
+      ${s.solarFlowing && animate ? this._photon('ef-solar-inv', this._config.solar_color, 'fwd', 1.8, 70) : ''}
+      ${s.gridFlowing && animate ? this._photon('ef-grid-inv', this._config.grid_color, s.gridImporting ? 'rev' : 'fwd', 3, 326) : ''}
+      ${s.batteryFlowing && animate ? this._photon('ef-inv-battery', this._config.battery_color, s.batteryCharging ? 'fwd' : 'rev', 1.2, 36) : ''}
+      ${s.homeFlowing && animate ? this._photon('ef-inv-home', this._config.home_color, 'fwd', 1.5, 120) : ''}
+    `;
+  }
+
+  _render() {
+    if (!this._config || !this._hass) return;
+
+    const s = this._getFlowState();
+    const solarFmt = this._formatPower(s.solarWatts);
+    const gridFmt = this._formatPower(s.gridWatts);
+    const batteryFmt = this._formatPower(s.batteryWatts);
+    const homeFmt = this._formatPower(s.homeWatts);
+
     let batteryLabel = this._config.battery_idle_label;
-    if (batteryFlowing) {
-      batteryLabel = batteryCharging
+    if (s.batteryFlowing) {
+      batteryLabel = s.batteryCharging
         ? this._config.battery_charging_label
         : this._config.battery_discharging_label;
     }
 
     const animate = this._config.animate;
     const bgImage = this._config.background_image;
+
+    this._rendered = true;
+    this._lastFlowSig = [
+      s.solarFlowing, s.gridFlowing, s.gridImporting,
+      s.batteryFlowing, s.batteryCharging, s.homeFlowing,
+    ].join('|');
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -254,15 +329,15 @@ class EcoflowEnergyCard extends HTMLElement {
       <ha-card>
         <div class="top-labels">
           <div class="top-label">
-            <div><span class="val">${gridFmt.value}</span> <span class="val-unit">${gridFmt.unit}</span></div>
+            <div><span class="val" id="grid-val">${gridFmt.value}</span> <span class="val-unit" id="grid-unit">${gridFmt.unit}</span></div>
             <div class="lbl">${this._config.grid_label}</div>
           </div>
           <div class="top-label">
-            <div><span class="val">${solarFmt.value}</span> <span class="val-unit">${solarFmt.unit}</span></div>
+            <div><span class="val" id="solar-val">${solarFmt.value}</span> <span class="val-unit" id="solar-unit">${solarFmt.unit}</span></div>
             <div class="lbl">${this._config.solar_label}</div>
           </div>
           <div class="top-label">
-            <div><span class="val">${homeFmt.value}</span> <span class="val-unit">${homeFmt.unit}</span></div>
+            <div><span class="val" id="home-val">${homeFmt.value}</span> <span class="val-unit" id="home-unit">${homeFmt.unit}</span></div>
             <div class="lbl">${this._config.home_label}</div>
           </div>
         </div>
@@ -310,25 +385,21 @@ class EcoflowEnergyCard extends HTMLElement {
               </filter>
             </defs>
 
-            <!-- Solar → Inverter photon (path ~70px) -->
-            ${solarFlowing && animate ? this._photon('ef-solar-inv', this._config.solar_color, 'fwd', 1.8, 70) : ''}
-
-            <!-- Grid → Inverter photon (path ~326px) -->
-            ${gridFlowing && animate ? this._photon('ef-grid-inv', this._config.grid_color, gridImporting ? 'rev' : 'fwd', 3, 326) : ''}
-
-            <!-- Inverter → Battery photon (path ~36px) -->
-            ${batteryFlowing && animate ? this._photon('ef-inv-battery', this._config.battery_color, batteryCharging ? 'fwd' : 'rev', 1.2, 36) : ''}
-
-            <!-- Inverter → Home photon (path ~120px) -->
-            ${homeFlowing && animate ? this._photon('ef-inv-home', this._config.home_color, 'fwd', 1.5, 120) : ''}
+            <!-- Animations container (rebuilt only when flow state changes) -->
+            <g id="anim-container">
+              ${s.solarFlowing && animate ? this._photon('ef-solar-inv', this._config.solar_color, 'fwd', 1.8, 70) : ''}
+              ${s.gridFlowing && animate ? this._photon('ef-grid-inv', this._config.grid_color, s.gridImporting ? 'rev' : 'fwd', 3, 326) : ''}
+              ${s.batteryFlowing && animate ? this._photon('ef-inv-battery', this._config.battery_color, s.batteryCharging ? 'fwd' : 'rev', 1.2, 36) : ''}
+              ${s.homeFlowing && animate ? this._photon('ef-inv-home', this._config.home_color, 'fwd', 1.5, 120) : ''}
+            </g>
 
             <!-- ====== BATTERY LABEL ====== -->
             <text x="270" y="280" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
-              <tspan font-size="17" font-weight="700" fill="#fff">${batteryFmt.value}</tspan>
-              <tspan font-size="12" fill="#ccc"> ${batteryFmt.unit}</tspan>
-              <tspan font-size="13" font-weight="700" fill="${batteryCharging ? this._config.battery_color : batteryFlowing ? '#f0a030' : this._config.battery_color}"> ${batteryCharging ? '↑' : batteryFlowing ? '↓' : ''} ${Math.round(batterySoc)}%</tspan>
+              <tspan id="batt-val" font-size="17" font-weight="700" fill="#fff">${batteryFmt.value}</tspan>
+              <tspan id="batt-unit" font-size="12" fill="#ccc"> ${batteryFmt.unit}</tspan>
+              <tspan id="batt-soc" font-size="13" font-weight="700" fill="${s.batteryCharging ? this._config.battery_color : s.batteryFlowing ? '#f0a030' : this._config.battery_color}"> ${s.batteryCharging ? '↑' : s.batteryFlowing ? '↓' : ''} ${Math.round(s.batterySoc)}%</tspan>
             </text>
-            <text x="270" y="296" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="${!batteryCharging && batteryFlowing ? '#f0a030' : '#888'}">${batteryLabel}</text>
+            <text id="batt-label" x="270" y="296" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="${!s.batteryCharging && s.batteryFlowing ? '#f0a030' : '#888'}">${batteryLabel}</text>
 
           </svg>
         </div>
