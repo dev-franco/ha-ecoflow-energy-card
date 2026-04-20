@@ -305,12 +305,12 @@ class EcoflowEnergyCard extends HTMLElement {
             ${homeFlowing && animate ? this._photon('ef-inv-home', this._config.home_color, 'fwd', 1.5, 120) : ''}
 
             <!-- ====== BATTERY LABEL ====== -->
-            <text x="370" y="260" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+            <text x="270" y="280" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
               <tspan font-size="17" font-weight="700" fill="#fff">${batteryFmt.value}</tspan>
               <tspan font-size="12" fill="#ccc"> ${batteryFmt.unit}</tspan>
-              <tspan font-size="13" font-weight="700" fill="${this._config.battery_color}"> ${batteryCharging ? '↑' : batteryFlowing ? '↓' : ''} ${Math.round(batterySoc)}%</tspan>
+              <tspan font-size="13" font-weight="700" fill="${batteryCharging ? this._config.battery_color : batteryFlowing ? '#f0a030' : this._config.battery_color}"> ${batteryCharging ? '↑' : batteryFlowing ? '↓' : ''} ${Math.round(batterySoc)}%</tspan>
             </text>
-            <text x="370" y="276" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#888">${batteryLabel}</text>
+            <text x="270" y="296" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="${!batteryCharging && batteryFlowing ? '#f0a030' : '#888'}">${batteryLabel}</text>
 
           </svg>
         </div>
