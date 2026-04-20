@@ -99,21 +99,21 @@
         <button onclick="applyPreset('idle')">All Idle</button>
       </div>
       <div class="control-group solar">
-        <label><span>Solar Power</span><span class="vd" id="solar-val">4.44 kW</span></label>
-        <input type="range" id="solar" min="0" max="12" step="0.01" value="4.44">
+        <label><span>Solar Power</span><span class="vd" id="solar-val">4440 W</span></label>
+        <input type="range" id="solar" min="0" max="12000" step="10" value="4440">
       </div>
       <div class="control-group grid">
-        <label><span>Grid Power</span><span class="vd" id="grid-val">0.00 kW</span></label>
-        <input type="range" id="grid" min="-10" max="10" step="0.01" value="0">
+        <label><span>Grid Power</span><span class="vd" id="grid-val">0 W</span></label>
+        <input type="range" id="grid" min="-10000" max="10000" step="10" value="0">
         <div class="hint">Negative = exporting to grid</div>
       </div>
       <div class="control-group home">
-        <label><span>Home Consumption</span><span class="vd" id="home-val">0.42 kW</span></label>
-        <input type="range" id="home" min="0" max="15" step="0.01" value="0.42">
+        <label><span>Home Consumption</span><span class="vd" id="home-val">420 W</span></label>
+        <input type="range" id="home" min="0" max="15000" step="10" value="420">
       </div>
       <div class="control-group battery">
-        <label><span>Battery Power</span><span class="vd" id="battery-val">4.02 kW</span></label>
-        <input type="range" id="battery" min="-8" max="8" step="0.01" value="4.02">
+        <label><span>Battery Power</span><span class="vd" id="battery-val">4020 W</span></label>
+        <input type="range" id="battery" min="-8000" max="8000" step="10" value="4020">
         <div class="hint">Positive = charging, Negative = discharging</div>
       </div>
       <div class="control-group soc">
@@ -127,10 +127,10 @@
     function buildHass(solar, grid, home, battery, soc) {
       return {
         states: {
-          "sensor.solar_power": { state: String(solar), attributes: { unit_of_measurement: "kW" } },
-          "sensor.grid_power": { state: String(grid), attributes: { unit_of_measurement: "kW" } },
-          "sensor.home_consumption": { state: String(home), attributes: { unit_of_measurement: "kW" } },
-          "sensor.battery_power": { state: String(battery), attributes: { unit_of_measurement: "kW" } },
+          "sensor.solar_power": { state: String(solar), attributes: { unit_of_measurement: "W" } },
+          "sensor.grid_power": { state: String(grid), attributes: { unit_of_measurement: "W" } },
+          "sensor.home_consumption": { state: String(home), attributes: { unit_of_measurement: "W" } },
+          "sensor.battery_power": { state: String(battery), attributes: { unit_of_measurement: "W" } },
           "sensor.battery_soc": { state: String(soc), attributes: { unit_of_measurement: "%" } }
         }
       };
@@ -142,8 +142,7 @@
       grid_power: "sensor.grid_power",
       home_consumption: "sensor.home_consumption",
       battery_power: "sensor.battery_power",
-      battery_soc: "sensor.battery_soc",
-      auto_scale: false
+      battery_soc: "sensor.battery_soc"
     });
 
     function updateCard() {
@@ -152,19 +151,19 @@
       const h = parseFloat(document.getElementById("home").value);
       const b = parseFloat(document.getElementById("battery").value);
       const soc = parseFloat(document.getElementById("soc").value);
-      document.getElementById("solar-val").textContent = s.toFixed(2) + " kW";
-      document.getElementById("grid-val").textContent = g.toFixed(2) + " kW";
-      document.getElementById("home-val").textContent = h.toFixed(2) + " kW";
-      document.getElementById("battery-val").textContent = b.toFixed(2) + " kW";
+      document.getElementById("solar-val").textContent = Math.round(s) + " W";
+      document.getElementById("grid-val").textContent = Math.round(g) + " W";
+      document.getElementById("home-val").textContent = Math.round(h) + " W";
+      document.getElementById("battery-val").textContent = Math.round(b) + " W";
       document.getElementById("soc-val").textContent = Math.round(soc) + "%";
       card.hass = buildHass(s, g, h, b, soc);
     }
 
     const presets = {
-      ecoflow: { solar: 4.44, grid: 0, home: 0.42, battery: 4.02, soc: 9 },
-      sunny:   { solar: 8.5, grid: -2.1, home: 3.2, battery: 3.2, soc: 72 },
-      night:   { solar: 0, grid: 2.8, home: 2.8, battery: 0, soc: 45 },
-      export:  { solar: 10.2, grid: -5.5, home: 1.5, battery: 3.2, soc: 95 },
+      ecoflow: { solar: 4440, grid: 0, home: 420, battery: 4020, soc: 9 },
+      sunny:   { solar: 8500, grid: -2100, home: 3200, battery: 3200, soc: 72 },
+      night:   { solar: 0, grid: 2800, home: 2800, battery: 0, soc: 45 },
+      export:  { solar: 10200, grid: -5500, home: 1500, battery: 3200, soc: 95 },
       idle:    { solar: 0, grid: 0, home: 0, battery: 0, soc: 50 },
     };
 

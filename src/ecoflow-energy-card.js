@@ -44,7 +44,6 @@ class EcoflowEnergyCard extends HTMLElement {
       battery_charging_label: config.battery_charging_label || "Charging",
       battery_discharging_label: config.battery_discharging_label || "Discharging",
       battery_idle_label: config.battery_idle_label || "Standby",
-      power_unit: config.power_unit || "kW",
       // Colors
       solar_color: config.solar_color || "#f5c542",
       grid_color: config.grid_color || "#a0a0a0",
@@ -52,7 +51,6 @@ class EcoflowEnergyCard extends HTMLElement {
       home_color: config.home_color || "#4fc3f7",
       // Options
       animate: config.animate !== false,
-      auto_scale: config.auto_scale !== false,
       ...config,
     };
     this._render();
@@ -74,16 +72,22 @@ class EcoflowEnergyCard extends HTMLElement {
     return this._hass.states[entityId].attributes.unit_of_measurement || "";
   }
 
-  _formatPower(value) {
-    // Value is already converted by _getRawPower, just format it
-    const absVal = Math.abs(value);
-    return absVal >= 10 ? absVal.toFixed(1) : absVal.toFixed(2);
+  _getRawWatts(entityId) {
+    let value = this._getEntityValue(entityId);
+    const unit = this._getEntityUnit(entityId);
+    // Normalize everything to watts
+    if (unit === "kW") value = value * 1000;
+    return value;
   }
 
-  _getRawPower(entityId) {
-    let value = this._getEntityValue(entityId);
-    if (this._config.auto_scale && this._getEntityUnit(entityId) === "W") value = value / 1000;
-    return value;
+  _formatPower(watts) {
+    // Smart display: W below 1000, kW above
+    const absVal = Math.abs(watts);
+    if (absVal >= 1000) {
+      const kw = absVal / 1000;
+      return { value: kw >= 10 ? kw.toFixed(1) : kw.toFixed(2), unit: "kW" };
+    }
+    return { value: Math.round(absVal).toString(), unit: "W" };
   }
 
   _photon(pathId, color, direction, duration, pathLength) {
@@ -132,19 +136,23 @@ class EcoflowEnergyCard extends HTMLElement {
   _render() {
     if (!this._config || !this._hass) return;
 
-    const solarPower = this._getRawPower(this._config.solar_power);
-    const gridPower = this._getRawPower(this._config.grid_power);
-    const batteryPower = this._getRawPower(this._config.battery_power);
-    const homePower = this._getRawPower(this._config.home_consumption);
+    const solarWatts = this._getRawWatts(this._config.solar_power);
+    const gridWatts = this._getRawWatts(this._config.grid_power);
+    const batteryWatts = this._getRawWatts(this._config.battery_power);
+    const homeWatts = this._getRawWatts(this._config.home_consumption);
     const batterySoc = this._getEntityValue(this._config.battery_soc);
 
+    const solarFmt = this._formatPower(solarWatts);
+    const gridFmt = this._formatPower(gridWatts);
+    const batteryFmt = this._formatPower(batteryWatts);
+    const homeFmt = this._formatPower(homeWatts);
 
-    const gridFlowing = Math.abs(gridPower) > 0.01;
-    const solarFlowing = Math.abs(solarPower) > 0.01;
-    const batteryFlowing = Math.abs(batteryPower) > 0.01;
-    const homeFlowing = Math.abs(homePower) > 0.01;
-    const gridImporting = gridPower > 0;
-    const batteryCharging = batteryPower > 0;
+    const gridFlowing = Math.abs(gridWatts) > 1;
+    const solarFlowing = Math.abs(solarWatts) > 1;
+    const batteryFlowing = Math.abs(batteryWatts) > 1;
+    const homeFlowing = Math.abs(homeWatts) > 1;
+    const gridImporting = gridWatts > 0;
+    const batteryCharging = batteryWatts > 0;
 
     let batteryLabel = this._config.battery_idle_label;
     if (batteryFlowing) {
@@ -153,7 +161,6 @@ class EcoflowEnergyCard extends HTMLElement {
         : this._config.battery_discharging_label;
     }
 
-    const unit = this._config.power_unit;
     const animate = this._config.animate;
     const bgImage = this._config.background_image;
 
@@ -173,7 +180,7 @@ class EcoflowEnergyCard extends HTMLElement {
           padding: 16px 20px 8px;
         }
         .top-label {
-          text-align: center;
+          text-align: left;
         }
         .top-label .val {
           font-size: 17px;
@@ -229,15 +236,15 @@ class EcoflowEnergyCard extends HTMLElement {
       <ha-card>
         <div class="top-labels">
           <div class="top-label">
-            <div><span class="val">${this._formatPower(gridPower)}</span> <span class="val-unit">${unit}</span></div>
+            <div><span class="val">${gridFmt.value}</span> <span class="val-unit">${gridFmt.unit}</span></div>
             <div class="lbl">${this._config.grid_label}</div>
           </div>
           <div class="top-label">
-            <div><span class="val">${this._formatPower(solarPower)}</span> <span class="val-unit">${unit}</span></div>
+            <div><span class="val">${solarFmt.value}</span> <span class="val-unit">${solarFmt.unit}</span></div>
             <div class="lbl">${this._config.solar_label}</div>
           </div>
           <div class="top-label">
-            <div><span class="val">${this._formatPower(homePower)}</span> <span class="val-unit">${unit}</span></div>
+            <div><span class="val">${homeFmt.value}</span> <span class="val-unit">${homeFmt.unit}</span></div>
             <div class="lbl">${this._config.home_label}</div>
           </div>
         </div>
@@ -252,10 +259,10 @@ class EcoflowEnergyCard extends HTMLElement {
                   Green window (Home): ~(345, 95)
                   Left wall (Grid):    ~(110, 160)
               -->
-              <!-- Pointer lines from coordinate picker -->
-              <path id="ptr-grid"  d="M 75,0 L 75,160"/>
-              <path id="ptr-solar" d="M 240,0 L 240,80"/>
-              <path id="ptr-home"  d="M 395,0 L 395,95"/>
+              <!-- Pointer lines — aligned with left edge of each label -->
+              <path id="ptr-grid"  d="M 22,0 L 22,160"/>
+              <path id="ptr-solar" d="M 210,0 L 210,80"/>
+              <path id="ptr-home"  d="M 400,0 L 400,95"/>
 
               <!-- Energy flow paths from coordinate picker -->
               <path id="ef-solar-inv"   d="M 225,162 L 238,192 L 238,225"/>
@@ -299,8 +306,8 @@ class EcoflowEnergyCard extends HTMLElement {
 
             <!-- ====== BATTERY LABEL ====== -->
             <text x="370" y="260" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
-              <tspan font-size="17" font-weight="700" fill="#fff">${this._formatPower(batteryPower)}</tspan>
-              <tspan font-size="12" fill="#ccc"> ${unit}</tspan>
+              <tspan font-size="17" font-weight="700" fill="#fff">${batteryFmt.value}</tspan>
+              <tspan font-size="12" fill="#ccc"> ${batteryFmt.unit}</tspan>
               <tspan font-size="13" font-weight="700" fill="${this._config.battery_color}"> ${batteryCharging ? '↑' : batteryFlowing ? '↓' : ''} ${Math.round(batterySoc)}%</tspan>
             </text>
             <text x="370" y="276" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="#888">${batteryLabel}</text>
