@@ -74,9 +74,8 @@ class EcoflowEnergyCard extends HTMLElement {
     return this._hass.states[entityId].attributes.unit_of_measurement || "";
   }
 
-  _formatPower(value, entityId) {
-    const unit = this._getEntityUnit(entityId);
-    if (this._config.auto_scale && unit === "W") value = value / 1000;
+  _formatPower(value) {
+    // Value is already converted by _getRawPower, just format it
     const absVal = Math.abs(value);
     return absVal >= 10 ? absVal.toFixed(1) : absVal.toFixed(2);
   }
@@ -139,14 +138,6 @@ class EcoflowEnergyCard extends HTMLElement {
     const homePower = this._getRawPower(this._config.home_consumption);
     const batterySoc = this._getEntityValue(this._config.battery_soc);
 
-    // Debug: log entity lookups (remove after troubleshooting)
-    console.table({
-      solar: { entity: this._config.solar_power, found: !!this._hass.states[this._config.solar_power], state: this._hass.states[this._config.solar_power]?.state, unit: this._hass.states[this._config.solar_power]?.attributes?.unit_of_measurement, raw: solarPower },
-      grid: { entity: this._config.grid_power, found: !!this._hass.states[this._config.grid_power], state: this._hass.states[this._config.grid_power]?.state, unit: this._hass.states[this._config.grid_power]?.attributes?.unit_of_measurement, raw: gridPower },
-      battery: { entity: this._config.battery_power, found: !!this._hass.states[this._config.battery_power], state: this._hass.states[this._config.battery_power]?.state, unit: this._hass.states[this._config.battery_power]?.attributes?.unit_of_measurement, raw: batteryPower },
-      home: { entity: this._config.home_consumption, found: !!this._hass.states[this._config.home_consumption], state: this._hass.states[this._config.home_consumption]?.state, unit: this._hass.states[this._config.home_consumption]?.attributes?.unit_of_measurement, raw: homePower },
-      soc: { entity: this._config.battery_soc, found: !!this._hass.states[this._config.battery_soc], state: this._hass.states[this._config.battery_soc]?.state, unit: this._hass.states[this._config.battery_soc]?.attributes?.unit_of_measurement, raw: batterySoc },
-    });
 
     const gridFlowing = Math.abs(gridPower) > 0.01;
     const solarFlowing = Math.abs(solarPower) > 0.01;
@@ -238,15 +229,15 @@ class EcoflowEnergyCard extends HTMLElement {
       <ha-card>
         <div class="top-labels">
           <div class="top-label">
-            <div><span class="val">${this._formatPower(gridPower, this._config.grid_power)}</span> <span class="val-unit">${unit}</span></div>
+            <div><span class="val">${this._formatPower(gridPower)}</span> <span class="val-unit">${unit}</span></div>
             <div class="lbl">${this._config.grid_label}</div>
           </div>
           <div class="top-label">
-            <div><span class="val">${this._formatPower(solarPower, this._config.solar_power)}</span> <span class="val-unit">${unit}</span></div>
+            <div><span class="val">${this._formatPower(solarPower)}</span> <span class="val-unit">${unit}</span></div>
             <div class="lbl">${this._config.solar_label}</div>
           </div>
           <div class="top-label">
-            <div><span class="val">${this._formatPower(homePower, this._config.home_consumption)}</span> <span class="val-unit">${unit}</span></div>
+            <div><span class="val">${this._formatPower(homePower)}</span> <span class="val-unit">${unit}</span></div>
             <div class="lbl">${this._config.home_label}</div>
           </div>
         </div>
@@ -308,7 +299,7 @@ class EcoflowEnergyCard extends HTMLElement {
 
             <!-- ====== BATTERY LABEL ====== -->
             <text x="370" y="260" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
-              <tspan font-size="17" font-weight="700" fill="#fff">${this._formatPower(batteryPower, this._config.battery_power)}</tspan>
+              <tspan font-size="17" font-weight="700" fill="#fff">${this._formatPower(batteryPower)}</tspan>
               <tspan font-size="12" fill="#ccc"> ${unit}</tspan>
               <tspan font-size="13" font-weight="700" fill="${this._config.battery_color}"> ${batteryCharging ? '↑' : batteryFlowing ? '↓' : ''} ${Math.round(batterySoc)}%</tspan>
             </text>
