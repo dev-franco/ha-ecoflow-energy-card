@@ -16,6 +16,34 @@ console.info(
   "color: #e45e25; background: white; font-weight: bold; padding: 2px 4px;"
 );
 
+// Default flow paths and pointer lines (viewBox 484x346)
+const DEFAULT_FLOW_PATHS = {
+  solar_to_inv:   { points: [[225,162],[238,192],[238,225]], color: 'solar_color', dir: 'fwd', speed: 1.8 },
+  grid_to_inv:    { points: [[238,225],[209,232],[212,308],[134,332],[12,266]], color: 'grid_color', dir: 'grid', speed: 3 },
+  inv_to_battery: { points: [[238,225],[240,261]], color: 'battery_color', dir: 'battery', speed: 1.2 },
+  inv_to_home:    { points: [[238,225],[354,206]], color: 'home_color', dir: 'fwd', speed: 1.5 },
+};
+
+const DEFAULT_POINTER_LINES = {
+  ptr_grid:  { points: [[22,0],[22,160]] },
+  ptr_solar: { points: [[210,0],[210,80]] },
+  ptr_home:  { points: [[400,0],[400,95]] },
+};
+
+function pointsToD(points) {
+  return points.map((p, i) => (i === 0 ? 'M' : 'L') + ` ${p[0]},${p[1]}`).join(' ');
+}
+
+function calcPathLength(points) {
+  let len = 0;
+  for (let i = 1; i < points.length; i++) {
+    const dx = points[i][0] - points[i-1][0];
+    const dy = points[i][1] - points[i-1][1];
+    len += Math.sqrt(dx*dx + dy*dy);
+  }
+  return Math.round(len);
+}
+
 class EcoflowEnergyCard extends HTMLElement {
   constructor() {
     super();
@@ -51,8 +79,25 @@ class EcoflowEnergyCard extends HTMLElement {
       home_color: config.home_color || "#4fc3f7",
       // Options
       animate: config.animate !== false,
+      // Flow paths (merge with defaults)
+      flow_paths: { ...DEFAULT_FLOW_PATHS, ...(config.flow_paths || {}) },
+      pointer_lines: { ...DEFAULT_POINTER_LINES, ...(config.pointer_lines || {}) },
       ...config,
     };
+    // Ensure flow_paths and pointer_lines are properly merged after spread
+    this._config.flow_paths = { ...DEFAULT_FLOW_PATHS };
+    if (config.flow_paths) {
+      for (const [k, v] of Object.entries(config.flow_paths)) {
+        this._config.flow_paths[k] = { ...DEFAULT_FLOW_PATHS[k], ...v };
+      }
+    }
+    this._config.pointer_lines = { ...DEFAULT_POINTER_LINES };
+    if (config.pointer_lines) {
+      for (const [k, v] of Object.entries(config.pointer_lines)) {
+        this._config.pointer_lines[k] = { ...DEFAULT_POINTER_LINES[k], ...v };
+      }
+    }
+    this._rendered = false;
     this._render();
   }
 
@@ -205,6 +250,31 @@ class EcoflowEnergyCard extends HTMLElement {
     }
   }
 
+  _getFlowDir(flowDef, s) {
+    // Resolve direction based on flow type and current state
+    if (flowDef.dir === 'grid') return s.gridImporting ? 'rev' : 'fwd';
+    if (flowDef.dir === 'battery') return s.batteryCharging ? 'fwd' : 'rev';
+    return flowDef.dir;
+  }
+
+  _isFlowActive(id, s) {
+    if (id === 'solar_to_inv') return s.solarFlowing;
+    if (id === 'grid_to_inv') return s.gridFlowing;
+    if (id === 'inv_to_battery') return s.batteryFlowing;
+    if (id === 'inv_to_home') return s.homeFlowing;
+    return false;
+  }
+
+  _buildPhotons(s) {
+    return Object.entries(this._config.flow_paths).map(([id, flow]) => {
+      if (!this._isFlowActive(id, s)) return '';
+      const pathLen = calcPathLength(flow.points);
+      const dir = this._getFlowDir(flow, s);
+      const color = this._config[flow.color];
+      return this._photon(`ef-${id}`, color, dir, flow.speed, pathLen);
+    }).join('');
+  }
+
   _updateAnimations() {
     if (!this._config || !this._hass) return;
     const s = this._getFlowState();
@@ -225,12 +295,7 @@ class EcoflowEnergyCard extends HTMLElement {
     if (!container) return;
 
     const animate = this._config.animate;
-    container.innerHTML = `
-      ${s.solarFlowing && animate ? this._photon('ef-solar-inv', this._config.solar_color, 'fwd', 1.8, 70) : ''}
-      ${s.gridFlowing && animate ? this._photon('ef-grid-inv', this._config.grid_color, s.gridImporting ? 'rev' : 'fwd', 3, 326) : ''}
-      ${s.batteryFlowing && animate ? this._photon('ef-inv-battery', this._config.battery_color, s.batteryCharging ? 'fwd' : 'rev', 1.2, 36) : ''}
-      ${s.homeFlowing && animate ? this._photon('ef-inv-home', this._config.home_color, 'fwd', 1.5, 120) : ''}
-    `;
+    container.innerHTML = animate ? this._buildPhotons(s) : '';
   }
 
   _render() {
@@ -377,30 +442,28 @@ class EcoflowEnergyCard extends HTMLElement {
                   Green window (Home): ~(345, 95)
                   Left wall (Grid):    ~(110, 160)
               -->
-              <!-- Pointer lines — aligned with left edge of each label -->
-              <path id="ptr-grid"  d="M 22,0 L 22,160"/>
-              <path id="ptr-solar" d="M 210,0 L 210,80"/>
-              <path id="ptr-home"  d="M 400,0 L 400,95"/>
+              <!-- Pointer lines -->
+              ${Object.entries(this._config.pointer_lines).map(([id, p]) =>
+                `<path id="${id}" d="${pointsToD(p.points)}"/>`
+              ).join('\n              ')}
 
-              <!-- Energy flow paths from coordinate picker -->
-              <path id="ef-solar-inv"   d="M 225,162 L 238,192 L 238,225"/>
-              <path id="ef-grid-inv"    d="M 238,225 L 209,232 L 212,308 L 134,332 L 12,266"/>
-              <path id="ef-inv-battery" d="M 238,225 L 240,261"/>
-              <path id="ef-inv-home"    d="M 238,225 L 354,206"/>
+              <!-- Energy flow paths -->
+              ${Object.entries(this._config.flow_paths).map(([id, p]) =>
+                `<path id="ef-${id}" d="${pointsToD(p.points)}"/>`
+              ).join('\n              ')}
             </defs>
 
             <!-- ====== LAYER 1: POINTER LINES (thin, static) ====== -->
-            <use href="#ptr-grid"  class="pointer"/>
-            <use href="#ptr-solar" class="pointer"/>
-            <use href="#ptr-home"  class="pointer"/>
+            ${Object.keys(this._config.pointer_lines).map(id =>
+              `<use href="#${id}" class="pointer"/>`
+            ).join('\n            ')}
 
             <!-- ====== LAYER 2: ENERGY FLOW (static wires + animated pulses) ====== -->
 
             <!-- Static wire backgrounds -->
-            <use href="#ef-solar-inv" class="energy-bg" stroke="${this._config.solar_color}"/>
-            <use href="#ef-grid-inv" class="energy-bg" stroke="${this._config.grid_color}"/>
-            <use href="#ef-inv-battery" class="energy-bg" stroke="${this._config.battery_color}"/>
-            <use href="#ef-inv-home" class="energy-bg" stroke="${this._config.home_color}"/>
+            ${Object.entries(this._config.flow_paths).map(([id, p]) =>
+              `<use href="#ef-${id}" class="energy-bg" stroke="${this._config[p.color]}"/>`
+            ).join('\n            ')}
 
             <!-- Glow filter for pulse dots -->
             <defs>
@@ -412,10 +475,7 @@ class EcoflowEnergyCard extends HTMLElement {
 
             <!-- Animations container (rebuilt only when flow state changes) -->
             <g id="anim-container">
-              ${s.solarFlowing && animate ? this._photon('ef-solar-inv', this._config.solar_color, 'fwd', 1.8, 70) : ''}
-              ${s.gridFlowing && animate ? this._photon('ef-grid-inv', this._config.grid_color, s.gridImporting ? 'rev' : 'fwd', 3, 326) : ''}
-              ${s.batteryFlowing && animate ? this._photon('ef-inv-battery', this._config.battery_color, s.batteryCharging ? 'fwd' : 'rev', 1.2, 36) : ''}
-              ${s.homeFlowing && animate ? this._photon('ef-inv-home', this._config.home_color, 'fwd', 1.5, 120) : ''}
+              ${animate ? this._buildPhotons(s) : ''}
             </g>
 
           </svg>
@@ -457,40 +517,373 @@ class EcoflowEnergyCardEditor extends HTMLElement {
     super();
     this.attachShadow({ mode: "open" });
     this._config = {};
+    this._dragging = null;
+    this._dragOffset = { x: 0, y: 0 };
+    this._tab = 'entities'; // 'entities' or 'paths'
   }
 
-  setConfig(config) { this._config = config; this._render(); }
-  set hass(hass) { this._hass = hass; this._render(); }
+  setConfig(config) { this._config = config; this._renderEditor(); }
+  set hass(hass) { this._hass = hass; this._renderEditor(); }
 
-  _render() {
+  _getFlowPaths() {
+    const merged = { ...DEFAULT_FLOW_PATHS };
+    if (this._config.flow_paths) {
+      for (const [k, v] of Object.entries(this._config.flow_paths)) {
+        merged[k] = { ...DEFAULT_FLOW_PATHS[k], ...v };
+      }
+    }
+    return merged;
+  }
+
+  _getPointerLines() {
+    const merged = { ...DEFAULT_POINTER_LINES };
+    if (this._config.pointer_lines) {
+      for (const [k, v] of Object.entries(this._config.pointer_lines)) {
+        merged[k] = { ...DEFAULT_POINTER_LINES[k], ...v };
+      }
+    }
+    return merged;
+  }
+
+  _fireChanged() {
+    this.dispatchEvent(new CustomEvent("config-changed", {
+      detail: { config: { ...this._config } },
+      bubbles: true, composed: true,
+    }));
+  }
+
+  _renderEditor() {
     if (!this._hass) return;
-    this.shadowRoot.innerHTML = `
+    const root = this.shadowRoot;
+
+    root.innerHTML = `
       <style>
+        :host { display: block; }
+        .tabs { display: flex; gap: 0; margin-bottom: 16px; border-bottom: 1px solid var(--divider-color, #444); }
+        .tab { padding: 8px 16px; cursor: pointer; font-size: 14px; font-weight: 500;
+               color: var(--secondary-text-color, #888); border-bottom: 2px solid transparent; }
+        .tab.active { color: var(--primary-text-color, #fff); border-bottom-color: var(--primary-color, #4fc3f7); }
+        .tab:hover { color: var(--primary-text-color, #fff); }
+        .panel { display: none; }
+        .panel.active { display: block; }
         .row { margin-bottom: 12px; }
         .row label { display: block; font-weight: 500; margin-bottom: 4px; font-size: 14px; color: var(--primary-text-color); }
-        .row input { width: 100%; padding: 8px; border: 1px solid var(--divider-color, #ccc); border-radius: 4px; background: var(--card-background-color, #fff); color: var(--primary-text-color); font-size: 14px; box-sizing: border-box; }
-        .section { font-size: 16px; font-weight: 600; margin: 16px 0 8px; color: var(--primary-text-color); }
+        .row input { width: 100%; padding: 8px; border: 1px solid var(--divider-color, #ccc); border-radius: 4px;
+                     background: var(--card-background-color, #1a1a1a); color: var(--primary-text-color); font-size: 14px; box-sizing: border-box; }
+        .section { font-size: 15px; font-weight: 600; margin: 16px 0 8px; color: var(--primary-text-color); }
         .section:first-child { margin-top: 0; }
+
+        /* Path editor */
+        .path-editor { position: relative; width: 100%; border-radius: 8px; overflow: hidden; cursor: crosshair; }
+        .path-editor img { width: 100%; display: block; }
+        .path-editor svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+        .path-editor svg .draggable { pointer-events: all; cursor: grab; }
+        .path-editor svg .draggable:active { cursor: grabbing; }
+        .path-hint { font-size: 12px; color: var(--secondary-text-color, #888); margin: 8px 0; line-height: 1.5; }
+        .path-legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 8px 0 12px; }
+        .path-legend .item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--primary-text-color); }
+        .path-legend .dot { width: 10px; height: 10px; border-radius: 50%; }
+        .path-actions { display: flex; gap: 6px; flex-wrap: wrap; margin: 8px 0; }
+        .path-actions button { padding: 5px 10px; font-size: 11px; border: 1px solid var(--divider-color, #444);
+                               border-radius: 4px; background: var(--card-background-color, #222);
+                               color: var(--primary-text-color, #ccc); cursor: pointer; }
+        .path-actions button:hover { border-color: var(--primary-color, #4fc3f7); }
+        .reset-btn { padding: 6px 12px; font-size: 12px; border: 1px solid #c62828; border-radius: 4px;
+                     background: transparent; color: #ef5350; cursor: pointer; margin-top: 8px; }
+        .reset-btn:hover { background: #c62828; color: #fff; }
       </style>
       <div>
-        <div class="section">Entities</div>
-        ${this._field("solar_power", "Solar Power", "Required")}
-        ${this._field("grid_power", "Grid Power", "Optional")}
-        ${this._field("battery_power", "Battery Power", "Optional")}
-        ${this._field("battery_soc", "Battery SOC", "Optional")}
-        ${this._field("home_consumption", "Home Consumption", "Optional")}
-        <div class="section">Settings</div>
-        ${this._textField("background_image", "Background Image", "/local/ecoflow-energy-card/house.png")}
-        <div class="section">Labels</div>
-        ${this._textField("grid_label", "Grid Label", "Stromnetz")}
-        ${this._textField("solar_label", "Solar Label", "Solar")}
-        ${this._textField("home_label", "Home Label", "Hausnetz")}
-        ${this._textField("battery_charging_label", "Charging Label", "Aufladung")}
-        ${this._textField("battery_discharging_label", "Discharging Label", "Entladung")}
-      </div>`;
-    this.shadowRoot.querySelectorAll("input").forEach(i =>
-      i.addEventListener("change", e => this._changed(e.target.dataset.f, e.target.value))
+        <div class="tabs">
+          <div class="tab ${this._tab === 'entities' ? 'active' : ''}" data-tab="entities">Entities & Labels</div>
+          <div class="tab ${this._tab === 'paths' ? 'active' : ''}" data-tab="paths">Flow Paths</div>
+        </div>
+
+        <!-- Entities tab -->
+        <div class="panel ${this._tab === 'entities' ? 'active' : ''}" id="panel-entities">
+          <div class="section">Entities</div>
+          ${this._field("solar_power", "Solar Power", "Required")}
+          ${this._field("grid_power", "Grid Power", "Optional")}
+          ${this._field("battery_power", "Battery Power", "Optional")}
+          ${this._field("battery_soc", "Battery SOC", "Optional")}
+          ${this._field("home_consumption", "Home Consumption", "Optional")}
+          <div class="section">Settings</div>
+          ${this._textField("background_image", "Background Image", "Leave empty for default")}
+          <div class="section">Labels</div>
+          ${this._textField("grid_label", "Grid Label", "Grid")}
+          ${this._textField("solar_label", "Solar Label", "Solar")}
+          ${this._textField("home_label", "Home Label", "Home")}
+          ${this._textField("battery_charging_label", "Charging Label", "Charging")}
+          ${this._textField("battery_discharging_label", "Discharging Label", "Discharging")}
+        </div>
+
+        <!-- Paths tab -->
+        <div class="panel ${this._tab === 'paths' ? 'active' : ''}" id="panel-paths">
+          <div class="path-hint">
+            Drag points to adjust energy flow paths. Right-click a point to remove it.
+          </div>
+          <div class="path-legend">
+            <div class="item"><div class="dot" style="background:#f5c542"></div> Solar → Inv</div>
+            <div class="item"><div class="dot" style="background:#a0a0a0"></div> Grid → Inv</div>
+            <div class="item"><div class="dot" style="background:#66bb6a"></div> Inv → Battery</div>
+            <div class="item"><div class="dot" style="background:#4fc3f7"></div> Inv → Home</div>
+            <div class="item"><div class="dot" style="background:rgba(255,255,255,0.4)"></div> Pointers</div>
+          </div>
+          <div class="path-editor" id="pathEditor">
+            <img src="${this._config.background_image || HOUSE_IMAGE_EMBEDDED}" alt="House" />
+            <svg id="pathSvg" viewBox="0 0 484 346"></svg>
+          </div>
+          <div class="path-actions">
+            <button data-add="solar_to_inv">+ Solar point</button>
+            <button data-add="grid_to_inv">+ Grid point</button>
+            <button data-add="inv_to_battery">+ Battery point</button>
+            <button data-add="inv_to_home">+ Home point</button>
+          </div>
+          <button class="reset-btn" id="resetPaths">Reset all paths to defaults</button>
+        </div>
+      </div>
+    `;
+
+    // Tab switching
+    root.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        this._tab = tab.dataset.tab;
+        this._renderEditor();
+      });
+    });
+
+    // Entity/label inputs
+    root.querySelectorAll('input[data-f]').forEach(i =>
+      i.addEventListener('change', e => {
+        const c = { ...this._config };
+        e.target.value === '' ? delete c[e.target.dataset.f] : (c[e.target.dataset.f] = e.target.value);
+        this._config = c;
+        this._fireChanged();
+      })
     );
+
+    // Path editor interactions
+    if (this._tab === 'paths') {
+      this._rebuildPathSvg();
+      this._attachPathDrag();
+
+      // Add point buttons
+      root.querySelectorAll('[data-add]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const flowId = btn.dataset.add;
+          const paths = this._getFlowPaths();
+          const pts = [...paths[flowId].points];
+          const last = pts[pts.length - 1];
+          pts.push([last[0] + 15, last[1] + 15]);
+          this._updateFlowPath(flowId, pts);
+        });
+      });
+
+      // Reset button
+      root.getElementById('resetPaths').addEventListener('click', () => {
+        const c = { ...this._config };
+        delete c.flow_paths;
+        delete c.pointer_lines;
+        this._config = c;
+        this._fireChanged();
+        this._rebuildPathSvg();
+      });
+    }
+  }
+
+  _rebuildPathSvg() {
+    const svg = this.shadowRoot.getElementById('pathSvg');
+    if (!svg) return;
+    svg.innerHTML = '';
+
+    const flows = this._getFlowPaths();
+    const pointers = this._getPointerLines();
+    const colorMap = {
+      solar_color: this._config.solar_color || '#f5c542',
+      grid_color: this._config.grid_color || '#a0a0a0',
+      battery_color: this._config.battery_color || '#66bb6a',
+      home_color: this._config.home_color || '#4fc3f7',
+    };
+
+    // Draw flow paths
+    for (const [id, flow] of Object.entries(flows)) {
+      const color = colorMap[flow.color] || '#fff';
+      if (flow.points.length >= 2) {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', pointsToD(flow.points));
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', color);
+        path.setAttribute('stroke-width', '3');
+        path.setAttribute('stroke-linecap', 'round');
+        path.setAttribute('stroke-linejoin', 'round');
+        path.setAttribute('opacity', '0.6');
+        path.setAttribute('stroke-dasharray', '6 10');
+        svg.appendChild(path);
+      }
+      flow.points.forEach((p, i) => {
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.classList.add('draggable');
+        g.dataset.type = 'flow';
+        g.dataset.flowId = id;
+        g.dataset.idx = i;
+        g.setAttribute('transform', `translate(${p[0]}, ${p[1]})`);
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('r', '6');
+        circle.setAttribute('fill', color);
+        circle.setAttribute('stroke', '#fff');
+        circle.setAttribute('stroke-width', '1.5');
+        g.appendChild(circle);
+        if (i === 0) {
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('y', '-10');
+          text.setAttribute('text-anchor', 'middle');
+          text.setAttribute('font-size', '9');
+          text.setAttribute('fill', color);
+          text.setAttribute('font-weight', 'bold');
+          text.textContent = id.split('_')[0].toUpperCase();
+          g.appendChild(text);
+        } else {
+          const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          text.setAttribute('y', '-9');
+          text.setAttribute('text-anchor', 'middle');
+          text.setAttribute('font-size', '8');
+          text.setAttribute('fill', color);
+          text.textContent = i;
+          g.appendChild(text);
+        }
+        svg.appendChild(g);
+      });
+    }
+
+    // Draw pointer lines
+    for (const [id, ptr] of Object.entries(pointers)) {
+      if (ptr.points.length >= 2) {
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('d', pointsToD(ptr.points));
+        path.setAttribute('fill', 'none');
+        path.setAttribute('stroke', 'rgba(255,255,255,0.3)');
+        path.setAttribute('stroke-width', '1');
+        svg.appendChild(path);
+      }
+      ptr.points.forEach((p, i) => {
+        const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        g.classList.add('draggable');
+        g.dataset.type = 'pointer';
+        g.dataset.flowId = id;
+        g.dataset.idx = i;
+        g.setAttribute('transform', `translate(${p[0]}, ${p[1]})`);
+        const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        circle.setAttribute('r', '4');
+        circle.setAttribute('fill', 'rgba(255,255,255,0.5)');
+        circle.setAttribute('stroke', '#fff');
+        circle.setAttribute('stroke-width', '1');
+        g.appendChild(circle);
+        svg.appendChild(g);
+      });
+    }
+  }
+
+  _svgPoint(svg, clientX, clientY) {
+    const pt = svg.createSVGPoint();
+    pt.x = clientX; pt.y = clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }
+
+  _attachPathDrag() {
+    const svg = this.shadowRoot.getElementById('pathSvg');
+    if (!svg) return;
+
+    // Right-click to remove
+    svg.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const g = e.target.closest('.draggable');
+      if (!g || g.dataset.type !== 'flow') return;
+      const flowId = g.dataset.flowId;
+      const idx = parseInt(g.dataset.idx);
+      const paths = this._getFlowPaths();
+      if (paths[flowId].points.length <= 2) return;
+      const pts = [...paths[flowId].points];
+      pts.splice(idx, 1);
+      this._updateFlowPath(flowId, pts);
+    });
+
+    // Drag start
+    svg.addEventListener('mousedown', (e) => {
+      const g = e.target.closest('.draggable');
+      if (!g) return;
+      e.preventDefault();
+      const pt = this._svgPoint(svg, e.clientX, e.clientY);
+      const type = g.dataset.type;
+      const flowId = g.dataset.flowId;
+      const idx = parseInt(g.dataset.idx);
+      const allPaths = type === 'flow' ? this._getFlowPaths() : this._getPointerLines();
+      const p = allPaths[flowId].points[idx];
+      this._dragging = { type, flowId, idx };
+      this._dragOffset = { x: pt.x - p[0], y: pt.y - p[1] };
+    });
+
+    const onMove = (e) => {
+      if (!this._dragging) return;
+      const pt = this._svgPoint(svg, e.clientX, e.clientY);
+      const { type, flowId, idx } = this._dragging;
+      const allPaths = type === 'flow' ? this._getFlowPaths() : this._getPointerLines();
+      const pts = [...allPaths[flowId].points];
+      pts[idx] = [Math.round(pt.x - this._dragOffset.x), Math.round(pt.y - this._dragOffset.y)];
+      if (type === 'flow') {
+        this._updateFlowPath(flowId, pts);
+      } else {
+        this._updatePointerLine(flowId, pts);
+      }
+    };
+
+    const onUp = () => { this._dragging = null; };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+
+    // Touch support
+    svg.addEventListener('touchstart', (e) => {
+      const g = e.target.closest('.draggable');
+      if (!g) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const pt = this._svgPoint(svg, touch.clientX, touch.clientY);
+      const type = g.dataset.type;
+      const flowId = g.dataset.flowId;
+      const idx = parseInt(g.dataset.idx);
+      const allPaths = type === 'flow' ? this._getFlowPaths() : this._getPointerLines();
+      const p = allPaths[flowId].points[idx];
+      this._dragging = { type, flowId, idx };
+      this._dragOffset = { x: pt.x - p[0], y: pt.y - p[1] };
+    }, { passive: false });
+
+    window.addEventListener('touchmove', (e) => {
+      if (!this._dragging) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      onMove({ clientX: touch.clientX, clientY: touch.clientY });
+    }, { passive: false });
+
+    window.addEventListener('touchend', onUp);
+  }
+
+  _updateFlowPath(flowId, points) {
+    const c = { ...this._config };
+    if (!c.flow_paths) c.flow_paths = {};
+    c.flow_paths = { ...c.flow_paths };
+    c.flow_paths[flowId] = { ...(c.flow_paths[flowId] || {}), points };
+    this._config = c;
+    this._fireChanged();
+    this._rebuildPathSvg();
+  }
+
+  _updatePointerLine(flowId, points) {
+    const c = { ...this._config };
+    if (!c.pointer_lines) c.pointer_lines = {};
+    c.pointer_lines = { ...c.pointer_lines };
+    c.pointer_lines[flowId] = { ...(c.pointer_lines[flowId] || {}), points };
+    this._config = c;
+    this._fireChanged();
+    this._rebuildPathSvg();
   }
 
   _field(f, l, h) {
@@ -498,12 +891,6 @@ class EcoflowEnergyCardEditor extends HTMLElement {
   }
   _textField(f, l, p) {
     return `<div class="row"><label>${l}</label><input data-f="${f}" value="${this._config[f] || ''}" placeholder="${p}"/></div>`;
-  }
-  _changed(f, v) {
-    const c = { ...this._config };
-    v === "" ? delete c[f] : (c[f] = v);
-    this._config = c;
-    this.dispatchEvent(new CustomEvent("config-changed", { detail: { config: c }, bubbles: true, composed: true }));
   }
 }
 
