@@ -783,9 +783,11 @@ class EcoflowEnergyCardEditor extends HTMLElement {
   }
 
   _svgPoint(svg, clientX, clientY) {
-    const pt = svg.createSVGPoint();
-    pt.x = clientX; pt.y = clientY;
-    return pt.matrixTransform(svg.getScreenCTM().inverse());
+    // Manual calculation — getScreenCTM() fails in HA's nested shadow DOM
+    const rect = svg.getBoundingClientRect();
+    const x = (clientX - rect.left) / rect.width * 484;
+    const y = (clientY - rect.top) / rect.height * 346;
+    return { x, y };
   }
 
   _attachPathDrag() {
