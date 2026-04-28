@@ -608,11 +608,16 @@ class EcoflowEnergyCardEditor extends HTMLElement {
         <!-- Entities tab -->
         <div class="panel ${this._tab === 'entities' ? 'active' : ''}" id="panel-entities">
           <div class="section">Entities</div>
-          <div class="row"><label>Solar Power (Required)</label><div id="pick-solar_power"></div></div>
-          <div class="row"><label>Grid Power (Optional)</label><div id="pick-grid_power"></div></div>
-          <div class="row"><label>Battery Power (Optional)</label><div id="pick-battery_power"></div></div>
-          <div class="row"><label>Battery SOC (Optional)</label><div id="pick-battery_soc"></div></div>
-          <div class="row"><label>Home Consumption (Optional)</label><div id="pick-home_consumption"></div></div>
+          <div class="row"><label>Solar Power (Required)</label>
+            <ha-entity-picker id="pick-solar_power" allow-custom-entity></ha-entity-picker></div>
+          <div class="row"><label>Grid Power (Optional)</label>
+            <ha-entity-picker id="pick-grid_power" allow-custom-entity></ha-entity-picker></div>
+          <div class="row"><label>Battery Power (Optional)</label>
+            <ha-entity-picker id="pick-battery_power" allow-custom-entity></ha-entity-picker></div>
+          <div class="row"><label>Battery SOC (Optional)</label>
+            <ha-entity-picker id="pick-battery_soc" allow-custom-entity></ha-entity-picker></div>
+          <div class="row"><label>Home Consumption (Optional)</label>
+            <ha-entity-picker id="pick-home_consumption" allow-custom-entity></ha-entity-picker></div>
           <div class="section">Settings</div>
           ${this._textField("background_image", "Background Image", "Leave empty for default")}
           <div class="section">Labels</div>
@@ -658,16 +663,13 @@ class EcoflowEnergyCardEditor extends HTMLElement {
       });
     });
 
-    // Entity pickers (using HA's built-in ha-entity-picker)
+    // Set properties on entity pickers
     const entityFields = ['solar_power', 'grid_power', 'battery_power', 'battery_soc', 'home_consumption'];
     entityFields.forEach(field => {
-      const container = root.getElementById(`pick-${field}`);
-      if (!container) return;
-      const picker = document.createElement('ha-entity-picker');
+      const picker = root.getElementById(`pick-${field}`);
+      if (!picker) return;
       picker.hass = this._hass;
       picker.value = this._config[field] || '';
-      picker.configValue = field;
-      picker.allowCustomEntity = true;
       picker.addEventListener('value-changed', (e) => {
         const c = { ...this._config };
         const val = e.detail.value;
@@ -675,7 +677,6 @@ class EcoflowEnergyCardEditor extends HTMLElement {
         this._config = c;
         this._fireChanged();
       });
-      container.appendChild(picker);
     });
 
     // Label/text inputs
