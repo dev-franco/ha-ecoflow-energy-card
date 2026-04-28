@@ -522,8 +522,15 @@ class EcoflowEnergyCardEditor extends HTMLElement {
     this._tab = 'entities'; // 'entities' or 'paths'
   }
 
-  setConfig(config) { this._config = config; this._renderEditor(); }
-  set hass(hass) { this._hass = hass; this._renderEditor(); }
+  setConfig(config) {
+    this._config = config;
+    // Don't rebuild editor if we're mid-drag (we triggered this via _fireChanged)
+    if (!this._dragging) this._renderEditor();
+  }
+  set hass(hass) {
+    this._hass = hass;
+    if (!this._dragging) this._renderEditor();
+  }
 
   _getFlowPaths() {
     const merged = { ...DEFAULT_FLOW_PATHS };
