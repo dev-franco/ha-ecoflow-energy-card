@@ -183,19 +183,20 @@ class EcoflowEnergyCard extends HTMLElement {
     if (sv) { sv.textContent = solarFmt.value; su.textContent = solarFmt.unit; }
     if (hv) { hv.textContent = homeFmt.value; hu.textContent = homeFmt.unit; }
 
-    // Update battery label (SVG)
+    // Update battery label (HTML)
     const bv = root.getElementById('batt-val');
     const bu = root.getElementById('batt-unit');
     const bs = root.getElementById('batt-soc');
     const bl = root.getElementById('batt-label');
     if (bv) {
       bv.textContent = batteryFmt.value;
-      bu.textContent = ' ' + batteryFmt.unit;
+      bu.textContent = batteryFmt.unit;
       const socColor = s.batteryCharging ? this._config.battery_color : s.batteryFlowing ? '#f0a030' : this._config.battery_color;
-      bs.setAttribute('fill', socColor);
-      bs.textContent = ` ${s.batteryCharging ? '↑' : s.batteryFlowing ? '↓' : ''} ${Math.round(s.batterySoc)}%`;
+      bs.style.color = socColor;
+      const boltSvg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" style="display:inline-block;vertical-align:-2px;fill:currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>';
+      bs.innerHTML = ` ${s.batteryCharging ? boltSvg : s.batteryFlowing ? '↓' : ''} ${Math.round(s.batterySoc)}%`;
       const lblColor = !s.batteryCharging && s.batteryFlowing ? '#f0a030' : '#888';
-      bl.setAttribute('fill', lblColor);
+      bl.style.color = lblColor;
       let batteryLabel = this._config.battery_idle_label;
       if (s.batteryFlowing) {
         batteryLabel = s.batteryCharging ? this._config.battery_charging_label : this._config.battery_discharging_label;
@@ -261,10 +262,10 @@ class EcoflowEnergyCard extends HTMLElement {
       <style>
         :host { display: block; }
         ha-card {
-          background: #2d2d2d;
-          color: #fff;
+          background: var(--ha-card-background, var(--card-background-color, #2d2d2d));
+          color: var(--primary-text-color, #fff);
           padding: 0;
-          border-radius: 12px;
+          border-radius: var(--ha-card-border-radius, 12px);
           overflow: hidden;
         }
         .top-labels {
@@ -278,16 +279,40 @@ class EcoflowEnergyCard extends HTMLElement {
         .top-label .val {
           font-size: 17px;
           font-weight: 700;
-          color: #fff;
+          color: var(--primary-text-color, #fff);
         }
         .top-label .val-unit {
           font-size: 12px;
           font-weight: 400;
-          color: #ccc;
+          color: var(--secondary-text-color, #ccc);
         }
         .top-label .lbl {
           font-size: 11px;
-          color: #888;
+          color: var(--secondary-text-color, #888);
+          margin-top: 2px;
+        }
+        .bottom-label {
+          position: absolute;
+          bottom: 12%;
+          left: 54%;
+          text-align: left;
+        }
+        .bottom-label .val {
+          font-size: 17px;
+          font-weight: 700;
+          color: var(--primary-text-color, #fff);
+        }
+        .bottom-label .val-unit {
+          font-size: 12px;
+          font-weight: 400;
+          color: var(--secondary-text-color, #ccc);
+        }
+        .bottom-label .batt-soc {
+          font-size: 13px;
+          font-weight: 700;
+        }
+        .bottom-label .lbl {
+          font-size: 11px;
           margin-top: 2px;
         }
         .energy-wrap {
@@ -393,15 +418,15 @@ class EcoflowEnergyCard extends HTMLElement {
               ${s.homeFlowing && animate ? this._photon('ef-inv-home', this._config.home_color, 'fwd', 1.5, 120) : ''}
             </g>
 
-            <!-- ====== BATTERY LABEL ====== -->
-            <text x="270" y="280" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
-              <tspan id="batt-val" font-size="17" font-weight="700" fill="#fff">${batteryFmt.value}</tspan>
-              <tspan id="batt-unit" font-size="12" fill="#ccc"> ${batteryFmt.unit}</tspan>
-              <tspan id="batt-soc" font-size="13" font-weight="700" fill="${s.batteryCharging ? this._config.battery_color : s.batteryFlowing ? '#f0a030' : this._config.battery_color}"> ${s.batteryCharging ? '↑' : s.batteryFlowing ? '↓' : ''} ${Math.round(s.batterySoc)}%</tspan>
-            </text>
-            <text id="batt-label" x="270" y="296" text-anchor="start" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="11" fill="${!s.batteryCharging && s.batteryFlowing ? '#f0a030' : '#888'}">${batteryLabel}</text>
-
           </svg>
+          <div class="bottom-label">
+            <div>
+              <span class="val" id="batt-val">${batteryFmt.value}</span>
+              <span class="val-unit" id="batt-unit">${batteryFmt.unit}</span>
+              <span class="batt-soc" id="batt-soc" style="color: ${s.batteryCharging ? this._config.battery_color : s.batteryFlowing ? '#f0a030' : this._config.battery_color}"> ${s.batteryCharging ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="14" height="14" style="display:inline-block;vertical-align:-2px;fill:currentColor"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>' : s.batteryFlowing ? '↓' : ''} ${Math.round(s.batterySoc)}%</span>
+            </div>
+            <div class="lbl" id="batt-label" style="color: ${!s.batteryCharging && s.batteryFlowing ? '#f0a030' : '#888'}">${batteryLabel}</div>
+          </div>
         </div>
       </ha-card>
     `;
