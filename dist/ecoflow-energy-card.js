@@ -608,11 +608,11 @@ class EcoflowEnergyCardEditor extends HTMLElement {
         <!-- Entities tab -->
         <div class="panel ${this._tab === 'entities' ? 'active' : ''}" id="panel-entities">
           <div class="section">Entities</div>
-          ${this._field("solar_power", "Solar Power", "Required")}
-          ${this._field("grid_power", "Grid Power", "Optional")}
-          ${this._field("battery_power", "Battery Power", "Optional")}
-          ${this._field("battery_soc", "Battery SOC", "Optional")}
-          ${this._field("home_consumption", "Home Consumption", "Optional")}
+          <div class="row"><label>Solar Power (Required)</label><div id="pick-solar_power"></div></div>
+          <div class="row"><label>Grid Power (Optional)</label><div id="pick-grid_power"></div></div>
+          <div class="row"><label>Battery Power (Optional)</label><div id="pick-battery_power"></div></div>
+          <div class="row"><label>Battery SOC (Optional)</label><div id="pick-battery_soc"></div></div>
+          <div class="row"><label>Home Consumption (Optional)</label><div id="pick-home_consumption"></div></div>
           <div class="section">Settings</div>
           ${this._textField("background_image", "Background Image", "Leave empty for default")}
           <div class="section">Labels</div>
@@ -658,7 +658,27 @@ class EcoflowEnergyCardEditor extends HTMLElement {
       });
     });
 
-    // Entity/label inputs
+    // Entity pickers (using HA's built-in ha-entity-picker)
+    const entityFields = ['solar_power', 'grid_power', 'battery_power', 'battery_soc', 'home_consumption'];
+    entityFields.forEach(field => {
+      const container = root.getElementById(`pick-${field}`);
+      if (!container) return;
+      const picker = document.createElement('ha-entity-picker');
+      picker.hass = this._hass;
+      picker.value = this._config[field] || '';
+      picker.configValue = field;
+      picker.allowCustomEntity = true;
+      picker.addEventListener('value-changed', (e) => {
+        const c = { ...this._config };
+        const val = e.detail.value;
+        val ? (c[field] = val) : delete c[field];
+        this._config = c;
+        this._fireChanged();
+      });
+      container.appendChild(picker);
+    });
+
+    // Label/text inputs
     root.querySelectorAll('input[data-f]').forEach(i =>
       i.addEventListener('change', e => {
         const c = { ...this._config };
