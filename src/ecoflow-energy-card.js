@@ -293,7 +293,7 @@ class EcoflowEnergyCard extends HTMLElement {
         }
         .bottom-label {
           position: absolute;
-          bottom: 12%;
+          bottom: 6%;
           left: 54%;
           text-align: left;
         }
