@@ -30,6 +30,14 @@ const DEFAULT_POINTER_LINES = {
   ptr_home:  { points: [[400,0],[400,95]] },
 };
 
+const ENTITY_FIELDS = [
+  { field: 'solar_power', label: 'Solar Power', required: true },
+  { field: 'grid_power', label: 'Grid Power' },
+  { field: 'battery_power', label: 'Battery Power' },
+  { field: 'battery_soc', label: 'Battery SOC' },
+  { field: 'home_consumption', label: 'Home Consumption' },
+];
+
 function pointsToD(points) {
   return points.map((p, i) => (i === 0 ? 'M' : 'L') + ` ${p[0]},${p[1]}`).join(' ');
 }
@@ -521,6 +529,7 @@ class EcoflowEnergyCardEditor extends HTMLElement {
     this._dragOffset = { x: 0, y: 0 };
     this._tab = 'entities'; // 'entities' or 'paths'
     this._editorRendered = false;
+    this._entityPickerRequested = false;
   }
 
   setConfig(config) {
@@ -588,6 +597,7 @@ class EcoflowEnergyCardEditor extends HTMLElement {
         .row label { display: block; font-weight: 500; margin-bottom: 4px; font-size: 14px; color: var(--primary-text-color); }
         .row input { width: 100%; padding: 8px; border: 1px solid var(--divider-color, #ccc); border-radius: 4px;
                      background: var(--card-background-color, #1a1a1a); color: var(--primary-text-color); font-size: 14px; box-sizing: border-box; }
+        .entity-control ha-entity-picker { display: block; width: 100%; min-height: 40px; }
         .section { font-size: 15px; font-weight: 600; margin: 16px 0 8px; color: var(--primary-text-color); }
         .section:first-child { margin-top: 0; }
 
@@ -619,16 +629,12 @@ class EcoflowEnergyCardEditor extends HTMLElement {
         <!-- Entities tab -->
         <div class="panel ${this._tab === 'entities' ? 'active' : ''}" id="panel-entities">
           <div class="section">Entities</div>
-          <div class="row"><label>Solar Power (Required)</label>
-            <ha-entity-picker id="pick-solar_power" allow-custom-entity></ha-entity-picker></div>
-          <div class="row"><label>Grid Power (Optional)</label>
-            <ha-entity-picker id="pick-grid_power" allow-custom-entity></ha-entity-picker></div>
-          <div class="row"><label>Battery Power (Optional)</label>
-            <ha-entity-picker id="pick-battery_power" allow-custom-entity></ha-entity-picker></div>
-          <div class="row"><label>Battery SOC (Optional)</label>
-            <ha-entity-picker id="pick-battery_soc" allow-custom-entity></ha-entity-picker></div>
-          <div class="row"><label>Home Consumption (Optional)</label>
-            <ha-entity-picker id="pick-home_consumption" allow-custom-entity></ha-entity-picker></div>
+          ${ENTITY_FIELDS.map(({ field, label, required }) => `
+            <div class="row entity-row">
+              <label>${label} (${required ? 'Required' : 'Optional'})</label>
+              <div class="entity-control" id="control-${field}" data-entity-field="${field}"></div>
+            </div>
+          `).join('')}
           <div class="section">Settings</div>
           ${this._textField("background_image", "Background Image", "Leave empty for default")}
           <div class="section">Labels</div>
@@ -666,6 +672,7 @@ class EcoflowEnergyCardEditor extends HTMLElement {
       </div>
     `;
     this._editorRendered = true;
+    this._requestHaEntityPicker();
 
     // Tab switching
     root.querySelectorAll('.tab').forEach(tab => {
@@ -676,20 +683,6 @@ class EcoflowEnergyCardEditor extends HTMLElement {
     });
 
     this._syncEditorFields({ syncTextInputs: true });
-
-    // Set up entity picker listeners
-    const entityFields = ['solar_power', 'grid_power', 'battery_power', 'battery_soc', 'home_consumption'];
-    entityFields.forEach(field => {
-      const picker = root.getElementById(`pick-${field}`);
-      if (!picker) return;
-      picker.addEventListener('value-changed', (e) => {
-        const c = { ...this._config };
-        const val = e.detail.value;
-        val ? (c[field] = val) : delete c[field];
-        this._config = c;
-        this._fireChanged();
-      });
-    });
 
     // Label/text inputs
     root.querySelectorAll('input[data-f]').forEach(i =>
@@ -734,13 +727,8 @@ class EcoflowEnergyCardEditor extends HTMLElement {
     const root = this.shadowRoot;
     if (!root) return;
 
-    const entityFields = ['solar_power', 'grid_power', 'battery_power', 'battery_soc', 'home_consumption'];
-    entityFields.forEach(field => {
-      const picker = root.getElementById(`pick-${field}`);
-      if (!picker) return;
-      picker.hass = this._hass;
-      const value = this._config[field] || '';
-      if (picker.value !== value) picker.value = value;
+    ENTITY_FIELDS.forEach(({ field }) => {
+      this._renderEntityControl(field);
     });
 
     if (!syncTextInputs) return;
@@ -748,6 +736,65 @@ class EcoflowEnergyCardEditor extends HTMLElement {
       if (input === root.activeElement) return;
       input.value = this._config[input.dataset.f] || '';
     });
+  }
+
+  _renderEntityControl(field) {
+    const control = this.shadowRoot.getElementById(`control-${field}`);
+    if (!control) return;
+
+    const value = this._config[field] || '';
+    const canUseHaPicker = Boolean(customElements.get('ha-entity-picker'));
+
+    if (canUseHaPicker) {
+      let picker = control.querySelector('ha-entity-picker');
+      if (!picker) {
+        control.innerHTML = '<ha-entity-picker allow-custom-entity></ha-entity-picker>';
+        picker = control.querySelector('ha-entity-picker');
+        picker.addEventListener('value-changed', (e) => this._setEntityField(field, e.detail.value));
+      }
+      picker.hass = this._hass;
+      if (picker.value !== value) picker.value = value;
+      return;
+    }
+
+    let input = control.querySelector('input[data-entity-input]');
+    if (!input) {
+      const listId = `entities-${field}`;
+      control.innerHTML = `
+        <input data-entity-input="${field}" list="${listId}" placeholder="sensor.ecoflow_..." autocomplete="off">
+        <datalist id="${listId}"></datalist>
+      `;
+      input = control.querySelector('input[data-entity-input]');
+      input.addEventListener('change', (e) => this._setEntityField(field, e.target.value.trim()));
+    }
+
+    if (input !== this.shadowRoot.activeElement && input.value !== value) {
+      input.value = value;
+    }
+
+    const datalist = control.querySelector('datalist');
+    const entities = this._hass ? Object.keys(this._hass.states).sort() : [];
+    datalist.innerHTML = entities.map(entityId => `<option value="${entityId}"></option>`).join('');
+  }
+
+  _setEntityField(field, value) {
+    const c = { ...this._config };
+    value ? (c[field] = value) : delete c[field];
+    this._config = c;
+    this._fireChanged();
+  }
+
+  _requestHaEntityPicker() {
+    if (this._entityPickerRequested || customElements.get('ha-entity-picker')) return;
+    this._entityPickerRequested = true;
+
+    customElements.whenDefined('ha-entity-picker').then(() => {
+      if (this.isConnected) this._syncEditorFields();
+    });
+
+    if (window.loadCardHelpers) {
+      window.loadCardHelpers().catch(() => {});
+    }
   }
 
   _rebuildPathSvg() {
