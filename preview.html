@@ -115,6 +115,7 @@
       color: #ff9a9a;
       font-size: 12px;
     }
+    ha-selector,
     ha-entity-picker {
       display: block;
       width: 100%;
@@ -245,6 +246,17 @@
       }
     }
 
+    class PreviewHaSelector extends PreviewEntityPicker {
+      set selector(selector) {
+        this._selector = selector;
+      }
+
+      get selector() {
+        return this._selector;
+      }
+    }
+
+    customElements.define("ha-selector", PreviewHaSelector);
     customElements.define("ha-entity-picker", PreviewEntityPicker);
   </script>
   <script src="src/ecoflow-energy-card.js"></script>

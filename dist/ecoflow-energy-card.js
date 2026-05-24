@@ -529,7 +529,7 @@ class EcoflowEnergyCardEditor extends HTMLElement {
     this._dragOffset = { x: 0, y: 0 };
     this._tab = 'entities'; // 'entities' or 'paths'
     this._editorRendered = false;
-    this._entityPickerRequested = false;
+    this._entityControlsRequested = false;
   }
 
   setConfig(config) {
@@ -597,6 +597,7 @@ class EcoflowEnergyCardEditor extends HTMLElement {
         .row label { display: block; font-weight: 500; margin-bottom: 4px; font-size: 14px; color: var(--primary-text-color); }
         .row input { width: 100%; padding: 8px; border: 1px solid var(--divider-color, #ccc); border-radius: 4px;
                      background: var(--card-background-color, #1a1a1a); color: var(--primary-text-color); font-size: 14px; box-sizing: border-box; }
+        .entity-control ha-selector,
         .entity-control ha-entity-picker { display: block; width: 100%; min-height: 40px; }
         .section { font-size: 15px; font-weight: 600; margin: 16px 0 8px; color: var(--primary-text-color); }
         .section:first-child { margin-top: 0; }
@@ -672,7 +673,7 @@ class EcoflowEnergyCardEditor extends HTMLElement {
       </div>
     `;
     this._editorRendered = true;
-    this._requestHaEntityPicker();
+    this._requestHaEntityControls();
 
     // Tab switching
     root.querySelectorAll('.tab').forEach(tab => {
@@ -743,7 +744,21 @@ class EcoflowEnergyCardEditor extends HTMLElement {
     if (!control) return;
 
     const value = this._config[field] || '';
+    const canUseHaSelector = Boolean(customElements.get('ha-selector'));
     const canUseHaPicker = Boolean(customElements.get('ha-entity-picker'));
+
+    if (canUseHaSelector) {
+      let selector = control.querySelector('ha-selector');
+      if (!selector) {
+        control.innerHTML = '<ha-selector></ha-selector>';
+        selector = control.querySelector('ha-selector');
+        selector.addEventListener('value-changed', (e) => this._setEntityField(field, e.detail.value));
+      }
+      selector.hass = this._hass;
+      selector.selector = { entity: {} };
+      if (selector.value !== value) selector.value = value;
+      return;
+    }
 
     if (canUseHaPicker) {
       let picker = control.querySelector('ha-entity-picker');
@@ -784,9 +799,13 @@ class EcoflowEnergyCardEditor extends HTMLElement {
     this._fireChanged();
   }
 
-  _requestHaEntityPicker() {
-    if (this._entityPickerRequested || customElements.get('ha-entity-picker')) return;
-    this._entityPickerRequested = true;
+  _requestHaEntityControls() {
+    if (this._entityControlsRequested || (customElements.get('ha-selector') && customElements.get('ha-entity-picker'))) return;
+    this._entityControlsRequested = true;
+
+    customElements.whenDefined('ha-selector').then(() => {
+      if (this.isConnected) this._syncEditorFields();
+    });
 
     customElements.whenDefined('ha-entity-picker').then(() => {
       if (this.isConnected) this._syncEditorFields();
