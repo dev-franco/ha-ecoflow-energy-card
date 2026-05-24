@@ -10,19 +10,17 @@
       background: #111;
       color: #eee;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      display: flex;
-      justify-content: center;
       padding: 30px 20px;
       min-height: 100vh;
     }
     .preview-wrapper {
-      display: flex;
-      gap: 40px;
-      max-width: 1100px;
+      display: grid;
+      grid-template-columns: minmax(360px, 520px) minmax(320px, 420px) 300px;
+      gap: 24px;
+      max-width: 1320px;
       width: 100%;
-      flex-wrap: wrap;
-      justify-content: center;
       align-items: flex-start;
+      margin: 0 auto;
     }
     ha-card {
       display: block;
@@ -32,8 +30,8 @@
       border-radius: 12px;
       overflow: hidden;
     }
-    .card-container { width: 520px; flex-shrink: 0; }
-    .card-container h2 {
+    .card-container, .editor-container, .controls { min-width: 0; }
+    .card-container h2, .editor-container h2 {
       margin-bottom: 12px; font-size: 13px; color: #666;
       text-transform: uppercase; letter-spacing: 1px;
     }
@@ -81,6 +79,54 @@
     .presets button:hover { background: #333; border-color: #666; color: #fff; }
     .presets button.active { background: #2a3a5a; border-color: #4fc3f7; color: #4fc3f7; }
     .hint { font-size: 10px; color: #555; margin-top: 3px; }
+    .editor-shell {
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 10px;
+      padding: 14px;
+    }
+    ecoflow-energy-card-editor {
+      --primary-text-color: #eee;
+      --secondary-text-color: #888;
+      --divider-color: #333;
+      --primary-color: #4fc3f7;
+      --card-background-color: #1a1a1a;
+      display: block;
+    }
+    .config-output {
+      margin-top: 14px;
+      background: #0d0d0d;
+      border: 1px solid #2a2a2a;
+      border-radius: 8px;
+      padding: 10px;
+      max-height: 220px;
+      overflow: auto;
+      color: #9ad7ff;
+      font: 11px/1.5 'SF Mono', Monaco, Consolas, monospace;
+      white-space: pre-wrap;
+    }
+    .error {
+      display: none;
+      margin-top: 10px;
+      padding: 8px 10px;
+      border: 1px solid #783030;
+      border-radius: 6px;
+      background: #2a1212;
+      color: #ff9a9a;
+      font-size: 12px;
+    }
+    ha-entity-picker {
+      display: block;
+      width: 100%;
+    }
+    @media (max-width: 1180px) {
+      .preview-wrapper { grid-template-columns: minmax(360px, 520px) minmax(320px, 1fr); }
+      .controls { width: auto; grid-column: 1 / -1; }
+    }
+    @media (max-width: 760px) {
+      body { padding: 20px 12px; }
+      .preview-wrapper { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
@@ -88,6 +134,14 @@
     <div class="card-container">
       <h2>Card Preview</h2>
       <ecoflow-energy-card id="card"></ecoflow-energy-card>
+      <div class="error" id="config-error"></div>
+    </div>
+    <div class="editor-container">
+      <h2>Home Assistant Edit Mode</h2>
+      <div class="editor-shell">
+        <ecoflow-energy-card-editor id="editor"></ecoflow-energy-card-editor>
+        <pre class="config-output" id="config-output"></pre>
+      </div>
     </div>
     <div class="controls">
       <h2>Simulate Values</h2>
@@ -122,6 +176,77 @@
       </div>
     </div>
   </div>
+  <script>
+    class PreviewEntityPicker extends HTMLElement {
+      constructor() {
+        super();
+        this.attachShadow({ mode: "open" });
+        this._hass = null;
+        this._value = "";
+        this._render();
+      }
+
+      set hass(hass) {
+        this._hass = hass;
+        this._render();
+      }
+
+      get hass() {
+        return this._hass;
+      }
+
+      set value(value) {
+        this._value = value || "";
+        this._render();
+      }
+
+      get value() {
+        return this._value || "";
+      }
+
+      _render() {
+        const entities = this._hass ? Object.keys(this._hass.states).sort() : [];
+        const hasCustomValue = this._value && !entities.includes(this._value);
+        const options = [
+          '<option value="">None</option>',
+          ...entities.map(entityId => `<option value="${entityId}" ${entityId === this._value ? 'selected' : ''}>${entityId}</option>`),
+          hasCustomValue ? `<option value="${this._value}" selected>${this._value}</option>` : '',
+        ].join('');
+
+        this.shadowRoot.innerHTML = `
+          <style>
+            :host { display: block; }
+            select {
+              width: 100%;
+              min-height: 40px;
+              padding: 8px 10px;
+              border: 1px solid var(--divider-color, #444);
+              border-radius: 4px;
+              background: var(--card-background-color, #1a1a1a);
+              color: var(--primary-text-color, #eee);
+              font: inherit;
+            }
+            select:focus {
+              outline: none;
+              border-color: var(--primary-color, #4fc3f7);
+            }
+          </style>
+          <select>${options}</select>
+        `;
+
+        this.shadowRoot.querySelector('select').addEventListener('change', (event) => {
+          this._value = event.target.value;
+          this.dispatchEvent(new CustomEvent('value-changed', {
+            detail: { value: this._value },
+            bubbles: true,
+            composed: true,
+          }));
+        });
+      }
+    }
+
+    customElements.define("ha-entity-picker", PreviewEntityPicker);
+  </script>
   <script src="src/ecoflow-energy-card.js"></script>
   <script>
     function buildHass(solar, grid, home, battery, soc) {
@@ -131,18 +256,49 @@
           "sensor.grid_power": { state: String(grid), attributes: { unit_of_measurement: "W" } },
           "sensor.home_consumption": { state: String(home), attributes: { unit_of_measurement: "W" } },
           "sensor.battery_power": { state: String(battery), attributes: { unit_of_measurement: "W" } },
-          "sensor.battery_soc": { state: String(soc), attributes: { unit_of_measurement: "%" } }
+          "sensor.battery_soc": { state: String(soc), attributes: { unit_of_measurement: "%" } },
+          "sensor.garage_load": { state: "780", attributes: { unit_of_measurement: "W" } },
+          "sensor.ev_charger_power": { state: "6400", attributes: { unit_of_measurement: "W" } },
+          "sensor.backup_battery_soc": { state: "64", attributes: { unit_of_measurement: "%" } }
         }
       };
     }
 
     const card = document.getElementById("card");
-    card.setConfig({
+    const editor = document.getElementById("editor");
+    const configOutput = document.getElementById("config-output");
+    const configError = document.getElementById("config-error");
+    let currentHass = null;
+    let currentConfig = {
       solar_power: "sensor.solar_power",
       grid_power: "sensor.grid_power",
       home_consumption: "sensor.home_consumption",
       battery_power: "sensor.battery_power",
       battery_soc: "sensor.battery_soc"
+    };
+
+    function renderConfig() {
+      configOutput.textContent = JSON.stringify(currentConfig, null, 2);
+    }
+
+    function applyConfig(config) {
+      currentConfig = { ...config };
+      editor.setConfig(currentConfig);
+      if (currentHass) editor.hass = currentHass;
+      try {
+        card.setConfig(currentConfig);
+        configError.style.display = "none";
+        configError.textContent = "";
+        if (currentHass) card.hass = currentHass;
+      } catch (err) {
+        configError.textContent = err.message;
+        configError.style.display = "block";
+      }
+      renderConfig();
+    }
+
+    editor.addEventListener("config-changed", (event) => {
+      applyConfig(event.detail.config);
     });
 
     function updateCard() {
@@ -156,7 +312,9 @@
       document.getElementById("home-val").textContent = Math.round(h) + " W";
       document.getElementById("battery-val").textContent = Math.round(b) + " W";
       document.getElementById("soc-val").textContent = Math.round(soc) + "%";
-      card.hass = buildHass(s, g, h, b, soc);
+      currentHass = buildHass(s, g, h, b, soc);
+      card.hass = currentHass;
+      editor.hass = currentHass;
     }
 
     const presets = {
@@ -187,6 +345,7 @@
       });
     });
 
+    applyConfig(currentConfig);
     applyPreset("ecoflow");
   </script>
 </body>

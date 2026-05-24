@@ -520,16 +520,27 @@ class EcoflowEnergyCardEditor extends HTMLElement {
     this._dragging = null;
     this._dragOffset = { x: 0, y: 0 };
     this._tab = 'entities'; // 'entities' or 'paths'
+    this._editorRendered = false;
   }
 
   setConfig(config) {
     this._config = config;
-    // Don't rebuild editor if we're mid-drag (we triggered this via _fireChanged)
-    if (!this._dragging) this._renderEditor();
+    if (this._dragging) return;
+    if (!this._editorRendered) {
+      this._renderEditor();
+      return;
+    }
+    this._syncEditorFields({ syncTextInputs: true });
+    if (this._tab === 'paths') this._rebuildPathSvg();
   }
   set hass(hass) {
     this._hass = hass;
-    if (!this._dragging) this._renderEditor();
+    if (this._dragging) return;
+    if (!this._editorRendered) {
+      this._renderEditor();
+      return;
+    }
+    this._syncEditorFields();
   }
 
   _getFlowPaths() {
@@ -654,6 +665,7 @@ class EcoflowEnergyCardEditor extends HTMLElement {
         </div>
       </div>
     `;
+    this._editorRendered = true;
 
     // Tab switching
     root.querySelectorAll('.tab').forEach(tab => {
@@ -663,13 +675,13 @@ class EcoflowEnergyCardEditor extends HTMLElement {
       });
     });
 
-    // Set properties on entity pickers
+    this._syncEditorFields({ syncTextInputs: true });
+
+    // Set up entity picker listeners
     const entityFields = ['solar_power', 'grid_power', 'battery_power', 'battery_soc', 'home_consumption'];
     entityFields.forEach(field => {
       const picker = root.getElementById(`pick-${field}`);
       if (!picker) return;
-      picker.hass = this._hass;
-      picker.value = this._config[field] || '';
       picker.addEventListener('value-changed', (e) => {
         const c = { ...this._config };
         const val = e.detail.value;
@@ -716,6 +728,26 @@ class EcoflowEnergyCardEditor extends HTMLElement {
         this._rebuildPathSvg();
       });
     }
+  }
+
+  _syncEditorFields({ syncTextInputs = false } = {}) {
+    const root = this.shadowRoot;
+    if (!root) return;
+
+    const entityFields = ['solar_power', 'grid_power', 'battery_power', 'battery_soc', 'home_consumption'];
+    entityFields.forEach(field => {
+      const picker = root.getElementById(`pick-${field}`);
+      if (!picker) return;
+      picker.hass = this._hass;
+      const value = this._config[field] || '';
+      if (picker.value !== value) picker.value = value;
+    });
+
+    if (!syncTextInputs) return;
+    root.querySelectorAll('input[data-f]').forEach(input => {
+      if (input === root.activeElement) return;
+      input.value = this._config[input.dataset.f] || '';
+    });
   }
 
   _rebuildPathSvg() {
