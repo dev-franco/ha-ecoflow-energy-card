@@ -31,7 +31,7 @@ const DEFAULT_POINTER_LINES = {
 };
 
 const ENTITY_FIELDS = [
-  { field: 'solar_power', label: 'Solar Power', required: true },
+  { field: 'solar_power', label: 'Solar Power' },
   { field: 'grid_power', label: 'Grid Power' },
   { field: 'battery_power', label: 'Battery Power' },
   { field: 'battery_soc', label: 'Battery SOC' },
@@ -61,12 +61,9 @@ class EcoflowEnergyCard extends HTMLElement {
   }
 
   setConfig(config) {
-    if (!config.solar_power) {
-      throw new Error("Please define solar_power entity");
-    }
     this._config = {
       title: config.title || "",
-      solar_power: config.solar_power,
+      solar_power: config.solar_power || "",
       grid_power: config.grid_power || "",
       battery_power: config.battery_power || "",
       battery_soc: config.battery_soc || "",
@@ -630,9 +627,9 @@ class EcoflowEnergyCardEditor extends HTMLElement {
         <!-- Entities tab -->
         <div class="panel ${this._tab === 'entities' ? 'active' : ''}" id="panel-entities">
           <div class="section">Entities</div>
-          ${ENTITY_FIELDS.map(({ field, label, required }) => `
+          ${ENTITY_FIELDS.map(({ field, label }) => `
             <div class="row entity-row">
-              <label>${label} (${required ? 'Required' : 'Optional'})</label>
+              <label>${label} (Optional)</label>
               <div class="entity-control" id="control-${field}" data-entity-field="${field}"></div>
             </div>
           `).join('')}
